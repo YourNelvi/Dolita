@@ -8,11 +8,16 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+
+// CompositionLocal para saber si el tema actual es oscuro
+val LocalIsDarkTheme = staticCompositionLocalOf { false }
 
 enum class AppTheme(
     val lightPrimary: Long, val lightSecondary: Long, val lightTertiary: Long,
@@ -75,9 +80,15 @@ fun ERPTheme(
         else -> lightScheme(selectedTheme.value)
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    val isDark = darkTheme
+    CompositionLocalProvider(LocalIsDarkTheme provides isDark) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            content = content
+        )
+    }
 }
+
+@Composable
+fun isDarkTheme(): Boolean = LocalIsDarkTheme.current

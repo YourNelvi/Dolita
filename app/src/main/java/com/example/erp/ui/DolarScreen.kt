@@ -73,6 +73,7 @@ import com.example.erp.ui.theme.DownRedLight
 import com.example.erp.ui.theme.ERPTheme
 import com.example.erp.ui.theme.UpGreenDark
 import com.example.erp.ui.theme.UpGreenLight
+import com.example.erp.ui.theme.isDarkTheme
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.NumberFormat
@@ -112,12 +113,10 @@ private fun formatUpdated(value: String): String {
 }
 
 @Composable
-private fun trendColor(): Color =
-    if (isSystemInDarkTheme()) UpGreenDark else UpGreenLight
+private fun trendColor(): Color = if (isDarkTheme()) UpGreenDark else UpGreenLight
 
 @Composable
-private fun downColor(): Color =
-    if (isSystemInDarkTheme()) DownRedDark else DownRedLight
+private fun downColor(): Color = if (isDarkTheme()) DownRedDark else DownRedLight
 
 @Composable
 fun DolarScreen(
@@ -374,7 +373,7 @@ private fun FeaturedCard(quote: DolarQuote?) {
 
             Surface(
                 shape = RoundedCornerShape(50),
-                color = Color.White.copy(alpha = 0.22f),
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.22f),
                 modifier = Modifier.clip(RoundedCornerShape(50))
             ) {
                 Row(
@@ -382,11 +381,11 @@ private fun FeaturedCard(quote: DolarQuote?) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     quote.variacion?.let { variacion ->
-                        TrendIcon(variacion, Color.White)
+                        TrendIcon(variacion, MaterialTheme.colorScheme.onPrimary)
                         Spacer(Modifier.width(6.dp))
                         Text(
                             text = "${if (variacion >= 0) "+" else ""}${"%.2f".format(variacion)}%",
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onPrimary,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -394,7 +393,7 @@ private fun FeaturedCard(quote: DolarQuote?) {
                     }
                     Text(
                         text = "Act. ${formatUpdated(quote.fechaActualizacion)}",
-                        color = Color.White.copy(alpha = 0.9f),
+                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
                         style = MaterialTheme.typography.labelMedium
                     )
                 }
