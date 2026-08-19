@@ -65,7 +65,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.erp.data.DolarQuote
 import com.example.erp.data.RateSample
-import com.example.erp.data.chartValues
 import com.example.erp.ui.components.ChartLabels
 import com.example.erp.ui.components.EvolutionChart
 import com.example.erp.ui.theme.AppTheme
@@ -299,13 +298,13 @@ private fun DolarContent(
             CalculatorCard(quote = selected)
         }
 
-        if (uiState.historial.isNotEmpty()) {
-            item { SectionHeader("Evolución") }
-            item {
-                EvolutionCard(
-                    quote = selected,
-                    historial = uiState.historial
-                )
+        item { SectionHeader("Histórico") }
+        when (val historico = historicoState(uiState.historial)) {
+            is HistoricoState.SinDatos -> item { SinDatosCard() }
+            is HistoricoState.ConDatos -> {
+                item { HistoricoChartCard(chart = historico.chart) }
+                item { HistoricoTableHeader() }
+                items(historico.rows) { row -> HistoricoRowItem(row) }
             }
         }
 
@@ -583,7 +582,7 @@ private fun AmountField(
 }
 
 @Composable
-private fun EvolutionCard(quote: DolarQuote?, historial: List<RateSample>) {
+private fun HistoricoChartCard(chart: List<Double>) {
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
@@ -592,31 +591,131 @@ private fun EvolutionCard(quote: DolarQuote?, historial: List<RateSample>) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = quote?.nombre ?: "",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "vs. día anterior",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Text(
+                text = "Evolución del año",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
             Spacer(Modifier.height(16.dp))
             EvolutionChart(
-                values = chartValues(historial),
+                values = chart,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(140.dp)
             )
             Spacer(Modifier.height(10.dp))
-            ChartLabels(values = chartValues(historial))
+            ChartLabels(values = chart)
+        }
+    }
+}
+
+@Composable
+private fun SinDatosCard() {
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Sin datos",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "El histórico se genera con cada carga exitosa de cotizaciones.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun HistoricoTableHeader() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Fecha",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = "Fuente",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1.4f)
+        )
+        Text(
+            text = "Precio",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = "Variación",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun HistoricoRowItem(row: HistoricoRow) {
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = row.fecha,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = row.fuente,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1.4f)
+            )
+            Text(
+                text = row.precio,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.End,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = row.variacion,
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.End,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -735,15 +834,36 @@ private fun DolarScreenPreview() {
                         fuente = "usd",
                         nombre = "Dólar (BCV)",
                         precio = 772.54,
-                        timestampEpochMillis = 1_787_133_600_000L
+                        timestampEpochMillis = 1_787_068_800_000L,
+                        anterior = 771.9,
+                        variacion = 0.083
                     ),
                     RateSample(
                         fuente = "usd",
                         nombre = "Dólar (BCV)",
                         precio = 773.31,
-                        timestampEpochMillis = 1_787_137_200_000L
+                        timestampEpochMillis = 1_787_155_200_000L,
+                        anterior = 772.54,
+                        variacion = 0.099
                     )
                 ),
+                loading = false
+            ),
+            onSelectCasa = {},
+            onRefresh = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun DolarScreenSinDatosPreview() {
+    ERPTheme {
+        DolarScreenContent(
+            uiState = DolarUiState(
+                quotes = previewQuotes(),
+                selectedFuente = "usdt",
+                historial = emptyList(),
                 loading = false
             ),
             onSelectCasa = {},
