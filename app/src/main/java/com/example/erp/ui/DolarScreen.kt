@@ -64,7 +64,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.erp.data.DolarQuote
-import com.example.erp.data.PricePoint
+import com.example.erp.data.RateSample
+import com.example.erp.data.chartValues
 import com.example.erp.ui.components.ChartLabels
 import com.example.erp.ui.components.EvolutionChart
 import com.example.erp.ui.theme.AppTheme
@@ -582,7 +583,7 @@ private fun AmountField(
 }
 
 @Composable
-private fun EvolutionCard(quote: DolarQuote?, historial: List<PricePoint>) {
+private fun EvolutionCard(quote: DolarQuote?, historial: List<RateSample>) {
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
@@ -609,13 +610,13 @@ private fun EvolutionCard(quote: DolarQuote?, historial: List<PricePoint>) {
             }
             Spacer(Modifier.height(16.dp))
             EvolutionChart(
-                values = historial.map { it.precio },
+                values = chartValues(historial),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(140.dp)
             )
             Spacer(Modifier.height(10.dp))
-            ChartLabels(values = historial.map { it.precio })
+            ChartLabels(values = chartValues(historial))
         }
     }
 }
@@ -730,8 +731,18 @@ private fun DolarScreenPreview() {
                 quotes = previewQuotes(),
                 selectedFuente = "usd",
                 historial = listOf(
-                    PricePoint(772.54, "Ayer"),
-                    PricePoint(773.31, "Hoy")
+                    RateSample(
+                        fuente = "usd",
+                        nombre = "Dólar (BCV)",
+                        precio = 772.54,
+                        timestampEpochMillis = 1_787_133_600_000L
+                    ),
+                    RateSample(
+                        fuente = "usd",
+                        nombre = "Dólar (BCV)",
+                        precio = 773.31,
+                        timestampEpochMillis = 1_787_137_200_000L
+                    )
                 ),
                 loading = false
             ),

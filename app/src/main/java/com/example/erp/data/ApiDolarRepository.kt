@@ -118,16 +118,6 @@ class ApiDolarRepository : DolarRepository {
         )
     }
 
-    override suspend fun getHistorial(quote: DolarQuote): List<PricePoint> =
-        if (quote.anterior != null) {
-            listOf(
-                PricePoint(precio = quote.anterior, hora = "Ayer"),
-                PricePoint(precio = quote.promedio, hora = "Hoy")
-            )
-        } else {
-            DolarSimulation.historial(quote.promedio)
-        }
-
     companion object {
         private const val BCV_URL = "https://rates.dolarvzla.com/bcv/current.json"
         private const val BINANCE_URL = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search"
