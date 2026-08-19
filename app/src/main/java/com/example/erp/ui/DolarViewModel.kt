@@ -42,7 +42,10 @@ class DolarViewModel @JvmOverloads constructor(
     val uiState: StateFlow<DolarUiState> = _uiState.asStateFlow()
 
     init {
-        load()
+        viewModelScope.launch {
+            historyStore.ensureSeeded()
+            load()
+        }
     }
 
     fun load() {
