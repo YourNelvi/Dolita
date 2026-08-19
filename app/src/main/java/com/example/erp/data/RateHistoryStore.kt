@@ -1,10 +1,86 @@
 package com.example.erp.data
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+
+/**
+ * Persists [RateSample]s into per-year JSON files (`rates-YYYY.json`).
+ * Appends are serialized and written atomically (tmp file + rename).
+ */
+interface RateHistoryStore {
+    suspend fun append(samples: List<RateSample>)
+    /** Samples of the current calendar year sorted by timestamp; corrupt/absent file -> emptyList. */
+    suspend fun readCurrentYear(): List<RateSample>
+}
+
+/**
+ * File-backed [RateHistoryStore]. A [Mutex] serializes the whole
+ * read-modify-write cycle so concurrent appends never interleave.
+ */
+class FileHistoryStore(
+    private val dir: File,
+    private val zoneId: ZoneId = ZoneId.systemDefault()
+) : RateHistoryStore {
+
+    private val mutex = Mutex()
+
+    override suspend fun append(samples: List<RateSample>) {
+        if (samples.isEmpty()) return
+        mutex.withLock {
+            withContext(Dispatchers.IO) {
+                samples.groupBy { rateYearName(it.timestampEpochMillis, zoneId) }
+                    .forEach { (fileName, yearSamples) ->
+                        val target = File(dir, fileName)
+                        val merged = (readSamples(target) + yearSamples)
+                            .sortedBy { it.timestampEpochMillis }
+                        writeAtomically(target, RateHistoryCodec.encode(merged))
+                    }
+            }
+        }
+    }
+
+    override suspend fun readCurrentYear(): List<RateSample> = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            readSamples(File(dir, rateYearName(System.currentTimeMillis(), zoneId)))
+                .sortedBy { it.timestampEpochMillis }
+        }
+    }
+
+    private fun readSamples(file: File): List<RateSample> {
+        if (!file.exists()) return emptyList()
+        return try {
+            RateHistoryCodec.decode(file.readText())
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun writeAtomically(target: File, content: String) {
+        val tmp = File(target.parentFile, "${target.name}.tmp")
+        tmp.writeText(content)
+        try {
+            Files.move(
+                tmp.toPath(),
+                target.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING
+            )
+        } catch (e: AtomicMoveNotSupportedException) {
+            Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
+}
 
 /**
  * Derives calendar dates from epoch millis in the given zone.
