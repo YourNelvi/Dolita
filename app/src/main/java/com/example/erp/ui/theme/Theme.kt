@@ -38,6 +38,11 @@ enum class AppTheme(
         0xFF00C853, 0xFF009624, 0xFFFFC107,
         0xFF00E676, 0xFF00C853, 0xFFFFEA00,
         "Alto Contraste"
+    ),
+    GRIS_NEUTRO(
+        0xFF9E9E9E, 0xFFB0B0B0, 0xFF757575,
+        0xFF616161, 0xFF757575, 0xFF9E9E9E,
+        "Gris Neutro"
     )
 }
 
@@ -60,7 +65,7 @@ fun ERPTheme(
     theme: AppTheme = AppTheme.DOLAR_VERDE,
     content: @Composable () -> Unit
 ) {
-    val selectedTheme = remember { mutableStateOf(theme) }
+    val selectedTheme = remember(theme) { mutableStateOf(theme) }
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current

@@ -38,6 +38,15 @@ val ContrastPrimary40 = Color(0xFF00C853)
 val ContrastSecondary40 = Color(0xFF009624)
 val ContrastTertiary40 = Color(0xFFFFC107)
 
+// ===== Tema 5: Gris Neutro (original) =====
+val GrayPrimary80 = Color(0xFF9E9E9E)
+val GraySecondary80 = Color(0xFFB0B0B0)
+val GrayTertiary80 = Color(0xFF757575)
+
+val GrayPrimary40 = Color(0xFF616161)
+val GraySecondary40 = Color(0xFF757575)
+val GrayTertiary40 = Color(0xFF9E9E9E)
+
 // ===== Semáforo (común) =====
 val UpGreenLight = Color(0xFF2E7D32)
 val DownRedLight = Color(0xFFC62828)
