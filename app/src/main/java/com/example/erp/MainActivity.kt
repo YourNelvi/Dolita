@@ -18,7 +18,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             var currentTheme by remember { mutableStateOf(AppTheme.DOLAR_VERDE) }
-            ERPTheme(theme = currentTheme) {
+            ERPTheme(dynamicColor = false, theme = currentTheme) {
                 DolarScreen(onThemeChange = { currentTheme = it })
             }
         }
