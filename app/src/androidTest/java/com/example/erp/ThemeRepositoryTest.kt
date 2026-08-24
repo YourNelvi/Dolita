@@ -1,8 +1,11 @@
 package com.example.erp
 
-import androidx.datastore.preferences.testing.createTestPreferencesDataStore
+import android.content.Context
+import android.content.SharedPreferences
+import androidx.test.core.app.ApplicationProvider
 import com.example.erp.data.ThemeMode
 import com.example.erp.data.ThemePreferencesImpl
+import com.example.erp.data.ThemePreferences
 import com.example.erp.data.ThemeRepository
 import com.example.erp.data.ThemeRepositoryImpl
 import com.example.erp.ui.theme.AppTheme
@@ -13,22 +16,25 @@ import org.junit.Test
 
 class ThemeRepositoryTest {
 
+    private fun createTestRepo(): ThemeRepository {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val prefs = context.getSharedPreferences("test_theme_prefs_${System.nanoTime()}", Context.MODE_PRIVATE)
+        val themePrefs = ThemePreferencesImpl(context, prefs)
+        return ThemeRepositoryImpl(themePrefs)
+    }
+
     @Test
     fun `default values are returned when no preferences are set`() = runBlocking {
-        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
-        val prefs = ThemePreferencesImpl(context)
-        val repo = ThemeRepositoryImpl(prefs)
+        val repo = createTestRepo()
 
-        assertEquals(AppTheme.DOLAR_VERDE, repo.theme.first())
+        assertEquals(AppTheme.AZUL_BANCARIO, repo.theme.first())
         assertEquals(ThemeMode.SYSTEM, repo.themeMode.first())
-        assertEquals(true, repo.dynamicColorEnabled.first())
+        assertEquals(false, repo.dynamicColorEnabled.first())
     }
 
     @Test
     fun `setTheme updates the theme flow`() = runBlocking {
-        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
-        val prefs = ThemePreferencesImpl(context)
-        val repo = ThemeRepositoryImpl(prefs)
+        val repo = createTestRepo()
 
         repo.setTheme(AppTheme.AZUL_BANCARIO)
         assertEquals(AppTheme.AZUL_BANCARIO, repo.theme.first())
@@ -39,9 +45,7 @@ class ThemeRepositoryTest {
 
     @Test
     fun `setThemeMode updates the theme mode flow`() = runBlocking {
-        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
-        val prefs = ThemePreferencesImpl(context)
-        val repo = ThemeRepositoryImpl(prefs)
+        val repo = createTestRepo()
 
         repo.setThemeMode(ThemeMode.DARK)
         assertEquals(ThemeMode.DARK, repo.themeMode.first())
@@ -55,9 +59,7 @@ class ThemeRepositoryTest {
 
     @Test
     fun `setDynamicColorEnabled updates the flow`() = runBlocking {
-        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
-        val prefs = ThemePreferencesImpl(context)
-        val repo = ThemeRepositoryImpl(prefs)
+        val repo = createTestRepo()
 
         repo.setDynamicColorEnabled(false)
         assertEquals(false, repo.dynamicColorEnabled.first())

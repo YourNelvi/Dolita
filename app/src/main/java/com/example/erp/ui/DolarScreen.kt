@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.erp.data.DolarQuote
+import com.example.erp.data.Error as AppError
 import com.example.erp.data.RateSample
 import com.example.erp.data.ThemeMode
 import com.example.erp.ui.components.ChartLabels
@@ -232,14 +233,14 @@ fun DolarScreenContent(
 
 @Composable
 private fun ErrorState(
-    error: Error,
+    error: AppError,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val message = when (error) {
-        is Error.NetworkError -> "Error de red: ${error.message}"
-        is Error.ApiError -> "Error del servidor (${error.source}): ${error.message}"
-        is Error.ParseError -> "Error de datos (${error.field}): ${error.message}"
+        is AppError.NetworkError -> "Error de red: ${error.message}"
+        is AppError.ApiError -> "Error del servidor (${error.source}): ${error.message}"
+        is AppError.ParseError -> "Error de datos (${error.field}): ${error.message}"
     }
     Column(
         modifier = modifier.padding(32.dp),

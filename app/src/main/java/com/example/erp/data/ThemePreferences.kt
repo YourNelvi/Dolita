@@ -36,11 +36,14 @@ interface ThemePreferences {
     suspend fun setDynamicColorEnabled(enabled: Boolean)
 }
 
-class ThemePreferencesImpl(private val context: Context) : ThemePreferences {
-
+class ThemePreferencesImpl(
+    private val context: Context,
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+) : ThemePreferences {
 
-    private val _selectedTheme = MutableStateFlow(prefs.getString(SELECTED_THEME_KEY, AppTheme.AZUL_BANCARIO.name) ?: AppTheme.AZUL_BANCARIO.name)
+    private val _selectedTheme = MutableStateFlow(
+        prefs.getString(SELECTED_THEME_KEY, AppTheme.AZUL_BANCARIO.name) ?: AppTheme.AZUL_BANCARIO.name
+    )
     override val selectedTheme: Flow<String> = _selectedTheme.asStateFlow()
 
     private val _themeMode = MutableStateFlow(

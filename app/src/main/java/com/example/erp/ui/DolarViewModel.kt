@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.erp.data.ApiDolarRepository
 import com.example.erp.data.DolarQuote
 import com.example.erp.data.DolarRepository
+import com.example.erp.data.Error
 import com.example.erp.data.FileHistoryStore
 import com.example.erp.data.RateHistoryStore
 import com.example.erp.data.RateSample
@@ -19,12 +20,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-sealed interface Error {
-    data class NetworkError(val message: String) : Error
-    data class ApiError(val source: String, val code: Int, val message: String) : Error
-    data class ParseError(val field: String, val message: String) : Error
-}
 
 data class DolarUiState(
     val quotes: List<DolarQuote> = emptyList(),
@@ -123,7 +118,7 @@ class DolarViewModel @JvmOverloads constructor(
         }
     }
 
-    private fun mapExceptionToError(exception: Throwable): Error {
+    internal fun mapExceptionToError(exception: Throwable): Error {
         return when (exception) {
             is java.io.IOException -> Error.NetworkError(exception.message ?: "Error de conexión")
             is org.json.JSONException -> Error.ParseError("json", exception.message ?: "Error de parseo")
