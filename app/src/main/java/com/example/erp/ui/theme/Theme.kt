@@ -65,22 +65,23 @@ private fun darkScheme(t: AppTheme) = darkColorScheme(
 
 @Composable
 fun ERPTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean? = null,
     dynamicColor: Boolean = true,
     theme: AppTheme = AppTheme.DOLAR_VERDE,
     content: @Composable () -> Unit
 ) {
+    val effectiveDarkTheme = darkTheme ?: isSystemInDarkTheme()
     val selectedTheme = remember(theme) { mutableStateOf(theme) }
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (effectiveDarkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        darkTheme -> darkScheme(selectedTheme.value)
+        effectiveDarkTheme -> darkScheme(selectedTheme.value)
         else -> lightScheme(selectedTheme.value)
     }
 
-    val isDark = darkTheme
+    val isDark = effectiveDarkTheme
     CompositionLocalProvider(LocalIsDarkTheme provides isDark) {
         MaterialTheme(
             colorScheme = colorScheme,

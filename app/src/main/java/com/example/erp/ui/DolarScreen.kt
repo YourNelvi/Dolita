@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.erp.data.DolarQuote
 import com.example.erp.data.RateSample
+import com.example.erp.data.ThemeMode
 import com.example.erp.ui.components.ChartLabels
 import com.example.erp.ui.components.EvolutionChart
 import com.example.erp.ui.theme.AppTheme
@@ -154,7 +155,7 @@ fun DolarScreenContent(
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = "Dolar",
+                            text = "Dolita",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -212,7 +213,7 @@ fun DolarScreenContent(
 
             uiState.error != null && uiState.quotes.isEmpty() -> {
                 ErrorState(
-                    message = uiState.error.orEmpty(),
+                    error = uiState.error!!,
                     onRetry = onRefresh,
                     modifier = contentModifier
                 )
@@ -231,10 +232,15 @@ fun DolarScreenContent(
 
 @Composable
 private fun ErrorState(
-    message: String,
+    error: Error,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val message = when (error) {
+        is Error.NetworkError -> "Error de red: ${error.message}"
+        is Error.ApiError -> "Error del servidor (${error.source}): ${error.message}"
+        is Error.ParseError -> "Error de datos (${error.field}): ${error.message}"
+    }
     Column(
         modifier = modifier.padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
