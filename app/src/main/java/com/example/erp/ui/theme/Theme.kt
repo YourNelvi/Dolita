@@ -48,6 +48,11 @@ enum class AppTheme(
         0xFF9E9E9E, 0xFFB0B0B0, 0xFF757575,
         0xFF616161, 0xFF757575, 0xFF9E9E9E,
         "Gris Neutro"
+    ),
+    ROJO_DEGRADADO(
+        0xFFFF5252, 0xFFFF1744, 0xFFFF6D00,
+        0xFFB71C1C, 0xFF7F0000, 0xFFD84315,
+        "Rojo Degradado"
     )
 }
 

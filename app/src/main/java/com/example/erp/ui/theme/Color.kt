@@ -53,3 +53,12 @@ val DownRedLight = Color(0xFFC62828)
 
 val UpGreenDark = Color(0xFF81C784)
 val DownRedDark = Color(0xFFEF9A9A)
+
+// ===== Tema 6: Rojo Degradado (Rojo + Negro) =====
+val RedGradientPrimary80 = Color(0xFFFF5252)   // Rojo brillante
+val RedGradientSecondary80 = Color(0xFFFF1744) // Rojo oscuro
+val RedGradientTertiary80 = Color(0xFFFF6D00)  // Naranja-rojo acento
+
+val RedGradientPrimary40 = Color(0xFFB71C1C)   // Rojo muy oscuro (casi negro)
+val RedGradientSecondary40 = Color(0xFF7F0000) // Negro-rojizo
+val RedGradientTertiary40 = Color(0xFFD84315)  // Rojo ladrillo
