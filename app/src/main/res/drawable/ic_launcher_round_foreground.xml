@@ -3,7 +3,7 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Dollar sign path - centered in 108x108 viewport -->
+    <!-- Dollar sign path - centered in 108x108 viewport for round icon -->
     <path
         android:fillColor="#FFFFFF"
         android:pathData="M54,14
