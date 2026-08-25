@@ -38,8 +38,7 @@ class MainActivity : ComponentActivity() {
                 theme = theme
             ) {
                 DolarScreen(
-                    viewModel = viewModel,
-                    onThemeChange = viewModel::setTheme
+                    viewModel = viewModel
                 )
             }
         }

@@ -1,6 +1,7 @@
 package com.example.erp.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,8 +32,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -69,6 +68,7 @@ import com.example.erp.data.RateSample
 import com.example.erp.data.ThemeMode
 import com.example.erp.ui.components.ChartLabels
 import com.example.erp.ui.components.EvolutionChart
+import com.example.erp.ui.components.ThemeBottomSheetContent
 import com.example.erp.ui.theme.AppTheme
 import com.example.erp.ui.theme.DownRedDark
 import com.example.erp.ui.theme.DownRedLight
@@ -83,6 +83,7 @@ import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import android.os.Build
 
 private val priceFormatter = NumberFormat.getNumberInstance(Locale.getDefault()).apply {
     minimumFractionDigits = 2
@@ -122,15 +123,14 @@ private fun downColor(): Color = if (isDarkTheme()) DownRedDark else DownRedLigh
 
 @Composable
 fun DolarScreen(
-    viewModel: DolarViewModel = viewModel(),
-    onThemeChange: ((AppTheme) -> Unit)? = null
+    viewModel: DolarViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     DolarScreenContent(
         uiState = uiState,
         onSelectCasa = viewModel::select,
         onRefresh = viewModel::load,
-        onThemeChange = onThemeChange
+        viewModel = viewModel
     )
 }
 
@@ -140,9 +140,14 @@ fun DolarScreenContent(
     uiState: DolarUiState,
     onSelectCasa: (String) -> Unit,
     onRefresh: () -> Unit,
-    onThemeChange: ((AppTheme) -> Unit)? = null
+    viewModel: DolarViewModel
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var showBottomSheet by remember { mutableStateOf(false) }
+    val currentTheme by viewModel.theme.collectAsState(initial = AppTheme.AZUL_BANCARIO)
+    val currentMode by viewModel.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
+    val currentDynamicColor by viewModel.dynamicColorEnabled.collectAsState(initial = false)
+    val isDynamicColorAvailable = Build.VERSION.SDK_INT >= 31 // Android 12+
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -170,26 +175,12 @@ fun DolarScreenContent(
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
-                    IconButton(onClick = { expanded = !expanded }) {
+                    IconButton(onClick = { showBottomSheet = true }) {
                         Icon(
                             imageVector = Icons.Rounded.Palette,
                             contentDescription = "Tema",
                             tint = MaterialTheme.colorScheme.primary
                         )
-                    }
-                    DropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
-                    ) {
-                        AppTheme.values().forEach { theme ->
-                            DropdownMenuItem(
-                                text = { Text(theme.displayName) },
-                                onClick = {
-                                    onThemeChange?.invoke(theme)
-                                    expanded = false
-                                }
-                            )
-                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -226,6 +217,61 @@ fun DolarScreenContent(
                     onSelectCasa = onSelectCasa,
                     modifier = contentModifier
                 )
+            }
+        }
+
+        // Custom Bottom Sheet Overlay
+        if (showBottomSheet) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.4f))
+                    .fillMaxSize()
+                    .clickable { showBottomSheet = false },
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                ThemeBottomSheetContent(
+                    currentTheme = currentTheme,
+                    currentMode = currentMode,
+                    currentDynamicColor = currentDynamicColor,
+                    onThemeChange = { theme ->
+                        viewModel.setTheme(theme)
+                        showBottomSheet = false
+                    },
+                    onModeChange = { mode ->
+                        viewModel.setThemeMode(mode)
+                        showBottomSheet = false
+                    },
+                    onDynamicColorChange = { enabled ->
+                        viewModel.setDynamicColorEnabled(enabled)
+                    },
+                    isDynamicColorAvailable = isDynamicColorAvailable,
+                    onDismiss = { showBottomSheet = false }
+                )
+            Box(
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.surface)
+                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+            ) {
+                ThemeBottomSheetContent(
+                    currentTheme = currentTheme,
+                    currentMode = currentMode,
+                    currentDynamicColor = currentDynamicColor,
+                    onThemeChange = { theme ->
+                        viewModel.setTheme(theme)
+                        showBottomSheet = false
+                    },
+                    onModeChange = { mode ->
+                        viewModel.setThemeMode(mode)
+                        showBottomSheet = false
+                    },
+                    onDynamicColorChange = { enabled ->
+                        viewModel.setDynamicColorEnabled(enabled)
+                    },
+                    isDynamicColorAvailable = isDynamicColorAvailable,
+                    onDismiss = { showBottomSheet = false }
+                )
+            }
             }
         }
     }
@@ -830,6 +876,8 @@ private fun TrendIcon(variacion: Double, tint: Color) {
 @Preview(showBackground = true)
 @Composable
 private fun DolarScreenPreview() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val fakeViewModel = FakePreviewViewModel(context)
     ERPTheme {
         DolarScreenContent(
             uiState = DolarUiState(
@@ -856,7 +904,8 @@ private fun DolarScreenPreview() {
                 loading = false
             ),
             onSelectCasa = {},
-            onRefresh = {}
+            onRefresh = {},
+            viewModel = fakeViewModel
         )
     }
 }
@@ -864,6 +913,8 @@ private fun DolarScreenPreview() {
 @Preview(showBackground = true)
 @Composable
 private fun DolarScreenSinDatosPreview() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val fakeViewModel = FakePreviewViewModel(context)
     ERPTheme {
         DolarScreenContent(
             uiState = DolarUiState(
@@ -873,10 +924,20 @@ private fun DolarScreenSinDatosPreview() {
                 loading = false
             ),
             onSelectCasa = {},
-            onRefresh = {}
+            onRefresh = {},
+            viewModel = fakeViewModel
         )
     }
 }
+
+private class FakePreviewViewModel(
+    private val context: android.content.Context
+) : DolarViewModel(
+    application = context.applicationContext as android.app.Application,
+    repository = com.example.erp.data.ApiDolarRepository(),
+    historyStore = com.example.erp.data.FileHistoryStore(context.filesDir),
+    themeRepository = com.example.erp.data.ThemeRepositoryImpl(com.example.erp.data.ThemePreferencesImpl(context))
+)
 
 private fun previewQuotes(): List<DolarQuote> = listOf(
     DolarQuote("usd", "Dólar (BCV)", 773.31, 772.54, 0.099, "2026-08-18"),

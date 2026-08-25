@@ -34,7 +34,7 @@ data class DolarUiState(
  * looks for an exact `(Application)` constructor; without it the app crashes
  * at runtime with "cannot be constructed".
  */
-class DolarViewModel @JvmOverloads constructor(
+open class DolarViewModel @JvmOverloads constructor(
     application: Application,
     private val repository: DolarRepository = ApiDolarRepository(),
     private val historyStore: RateHistoryStore = FileHistoryStore(application.filesDir),
