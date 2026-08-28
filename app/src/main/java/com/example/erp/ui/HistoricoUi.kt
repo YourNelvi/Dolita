@@ -19,7 +19,11 @@ data class HistoricoRow(
 /** What the Histórico section must render for the current-year samples. */
 sealed interface HistoricoState {
     data object SinDatos : HistoricoState
-    data class ConDatos(val chart: List<Double>, val rows: List<HistoricoRow>) : HistoricoState
+    data class ConDatos(
+        val chart: List<Double>,
+        val samples: List<RateSample>,
+        val rows: List<HistoricoRow>
+    ) : HistoricoState
 }
 
 /** "—" when there is no variation; otherwise a signed percent, e.g. "+0,10%" / "-0,05%". */
@@ -60,4 +64,8 @@ fun historicoState(
     locale: Locale = Locale.getDefault()
 ): HistoricoState =
     if (samples.isEmpty()) HistoricoState.SinDatos
-    else HistoricoState.ConDatos(chart = chartValues(samples), rows = historicoRows(samples, zoneId, locale))
+    else HistoricoState.ConDatos(
+        chart = chartValues(samples),
+        samples = samples.sortedBy { it.timestampEpochMillis },
+        rows = historicoRows(samples, zoneId, locale)
+    )

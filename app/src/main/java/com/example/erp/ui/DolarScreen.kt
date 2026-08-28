@@ -57,6 +57,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -66,7 +70,6 @@ import com.example.erp.data.DolarQuote
 import com.example.erp.data.Error as AppError
 import com.example.erp.data.RateSample
 import com.example.erp.data.ThemeMode
-import com.example.erp.ui.components.ChartLabels
 import com.example.erp.ui.components.EvolutionChart
 import com.example.erp.ui.components.ThemeBottomSheetContent
 import com.example.erp.ui.theme.AppTheme
@@ -354,9 +357,7 @@ private fun DolarContent(
         when (val historico = historicoState(uiState.historial)) {
             is HistoricoState.SinDatos -> item { SinDatosCard() }
             is HistoricoState.ConDatos -> {
-                item { HistoricoChartCard(chart = historico.chart) }
-                item { HistoricoTableHeader() }
-                items(historico.rows) { row -> HistoricoRowItem(row) }
+                item { HistoricoChartCard(samples = historico.samples) }
             }
         }
 
@@ -524,43 +525,51 @@ private fun CalculatorCard(quote: DolarQuote?) {
     val rate = quote.promedio
     val shortName = quote.fuente.uppercase()
     var lastEdited by remember { mutableStateOf("ves") }
-    var vesInput by remember { mutableStateOf("") }
-    var divInput by remember { mutableStateOf("") }
+    // Estado: solo dígitos puros (ej: "1234" = 1234,00)
+    var vesDigits by remember { mutableStateOf("") }
+    var divDigits by remember { mutableStateOf("") }
 
-    fun sanitize(input: String): String =
-        input.replace(" ", "").filter { it.isDigit() || it == ',' || it == '.' }.take(14)
-
-    fun parse(input: String): BigDecimal? {
-        val normalized = input.trim().replace(',', '.')
-        if (normalized.isEmpty() || normalized == ".") return null
-        val value = normalized.toBigDecimalOrNull() ?: return null
-        if (value.signum() < 0) return null
-        return value
+    // Convierte dígitos (estilo calculadora clásico) a BigDecimal: "300" -> 3.00
+    fun parseDigits(digits: String): BigDecimal? {
+        if (digits.isEmpty()) return null
+        val padded = digits.padStart(3, '0')
+        val integerPart = padded.substring(0, padded.length - 2)
+        val decimalPart = padded.substring(padded.length - 2)
+        return BigDecimal("$integerPart.$decimalPart")
     }
 
     fun format(value: BigDecimal): String {
         val rounded = value.setScale(2, RoundingMode.HALF_UP)
-        return rounded.toPlainString().replace('.', ',')
+        val plain = rounded.toPlainString().replace('.', ',')
+        val parts = plain.split(',')
+        val withThousands = parts[0].reversed().chunked(3).joinToString(".").reversed()
+        return if (parts.size > 1) "$withThousands,${parts[1]}" else "$withThousands,00"
+    }
+
+    fun toDigits(formatted: String): String {
+        return formatted.split(',')[0].replace(".", "")
     }
 
     fun vesToDiv() {
-        val v = parse(vesInput)
+        val v = parseDigits(vesDigits)
         if (v == null || rate <= 0.0) {
-            divInput = ""
+            divDigits = ""
             return
         }
         val rateBD = BigDecimal.valueOf(rate)
-        divInput = format(v.divide(rateBD, 10, RoundingMode.HALF_UP))
+        val result = v.divide(rateBD, 10, RoundingMode.HALF_UP)
+        divDigits = toDigits(format(result))
     }
 
     fun divToVes() {
-        val v = parse(divInput)
+        val v = parseDigits(divDigits)
         if (v == null || rate <= 0.0) {
-            vesInput = ""
+            vesDigits = ""
             return
         }
         val rateBD = BigDecimal.valueOf(rate)
-        vesInput = format(v.multiply(rateBD))
+        val result = v.multiply(rateBD)
+        vesDigits = toDigits(format(result))
     }
 
     Card(
@@ -585,20 +594,20 @@ private fun CalculatorCard(quote: DolarQuote?) {
             Spacer(Modifier.height(16.dp))
 
             AmountField(
-                value = vesInput,
+                value = vesDigits,
                 label = "Bolívares",
-                onValueChange = {
-                    vesInput = sanitize(it)
+                onValueChange = { raw ->
+                    vesDigits = raw.filter { it.isDigit() }.take(10)
                     lastEdited = "ves"
                     vesToDiv()
                 }
             )
             Spacer(Modifier.height(10.dp))
             AmountField(
-                value = divInput,
+                value = divDigits,
                 label = shortName,
-                onValueChange = {
-                    divInput = sanitize(it)
+                onValueChange = { raw ->
+                    divDigits = raw.filter { it.isDigit() }.take(10)
                     lastEdited = "div"
                     divToVes()
                 }
@@ -628,13 +637,41 @@ private fun AmountField(
         onValueChange = onValueChange,
         label = { Text(label) },
         singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Number,
+            imeAction = androidx.compose.ui.text.input.ImeAction.Next
+        ),
+        visualTransformation = NumberVisualTransformation,
         modifier = Modifier.fillMaxWidth()
     )
 }
 
+private object NumberVisualTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val digits = text.text
+        // Calculadora clásica: dígitos entran derecha→izquierda
+        // "3" -> "0,03", "30" -> "0,30", "300" -> "3,00", "3000" -> "30,00"
+        val formatted = if (digits.isEmpty()) {
+            "0,00"
+        } else {
+            val padded = digits.padStart(3, '0')
+            val integerPart = padded.substring(0, padded.length - 2)
+            val decimalPart = padded.substring(padded.length - 2)
+            val withThousands = integerPart.reversed().chunked(3).joinToString(".").reversed()
+            "$withThousands,$decimalPart"
+        }
+        return TransformedText(
+            AnnotatedString(formatted),
+            object : OffsetMapping {
+                override fun originalToTransformed(offset: Int): Int = formatted.length
+                override fun transformedToOriginal(offset: Int): Int = digits.length
+            }
+        )
+    }
+}
+
 @Composable
-private fun HistoricoChartCard(chart: List<Double>) {
+private fun HistoricoChartCard(samples: List<com.example.erp.data.RateSample>) {
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
@@ -644,19 +681,17 @@ private fun HistoricoChartCard(chart: List<Double>) {
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(
-                text = "Evolución del año",
+                text = "Evolución del año (desliza para ver detalles)",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(Modifier.height(16.dp))
             EvolutionChart(
-                values = chart,
+                samples = samples,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp)
+                    .height(180.dp)
             )
-            Spacer(Modifier.height(10.dp))
-            ChartLabels(values = chart)
         }
     }
 }
