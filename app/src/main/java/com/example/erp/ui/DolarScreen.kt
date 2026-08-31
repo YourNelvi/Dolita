@@ -546,8 +546,13 @@ private fun CalculatorCard(quote: DolarQuote?) {
         return if (parts.size > 1) "$withThousands,${parts[1]}" else "$withThousands,00"
     }
 
+    // Convierte resultado formateado ("1,00" o "1.234,56") a dígitos calculadora ("100" o "123456")
     fun toDigits(formatted: String): String {
-        return formatted.split(',')[0].replace(".", "")
+        val parts = formatted.split(',')
+        val integerPart = parts[0].replace(".", "") // quitar separador de miles
+        val decimalPart = if (parts.size > 1) parts[1] else "00"
+        // Combinar parte entera + decimales (siempre 2 dígitos)
+        return (integerPart + decimalPart.padEnd(2, '0').take(2)).removePrefix("0").takeIf { it.isNotEmpty() } ?: "0"
     }
 
     fun vesToDiv() {

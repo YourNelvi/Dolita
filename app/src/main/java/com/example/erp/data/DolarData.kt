@@ -1,5 +1,8 @@
 package com.example.erp.data
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class DolarQuote(
     val fuente: String,
     val nombre: String,

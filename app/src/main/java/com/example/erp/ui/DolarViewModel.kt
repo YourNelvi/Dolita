@@ -4,10 +4,12 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.erp.data.ApiDolarRepository
+import com.example.erp.data.CachedDolarRepository
 import com.example.erp.data.DolarQuote
 import com.example.erp.data.DolarRepository
 import com.example.erp.data.Error
 import com.example.erp.data.FileHistoryStore
+import com.example.erp.data.QuoteScheduler
 import com.example.erp.data.RateHistoryStore
 import com.example.erp.data.RateSample
 import com.example.erp.data.RateSamplingPolicy
@@ -36,7 +38,7 @@ data class DolarUiState(
  */
 open class DolarViewModel @JvmOverloads constructor(
     application: Application,
-    private val repository: DolarRepository = ApiDolarRepository(),
+    private val repository: DolarRepository = CachedDolarRepository(ApiDolarRepository(), application),
     private val historyStore: RateHistoryStore = FileHistoryStore(application.filesDir),
     private val themeRepository: ThemeRepository = ThemeRepositoryImpl(ThemePreferencesImpl(application))
 ) : AndroidViewModel(application) {
@@ -55,6 +57,8 @@ open class DolarViewModel @JvmOverloads constructor(
     init {
         viewModelScope.launch {
             historyStore.ensureSeeded()
+            // Programar fetch diario a las 8 AM
+            QuoteScheduler.scheduleDailyFetch(application)
             load()
         }
     }
