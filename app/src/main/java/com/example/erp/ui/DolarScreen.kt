@@ -814,7 +814,7 @@ private fun CalendarLookupSection(
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "Seleccioná un día para ver la tasa de ese momento",
+                text = "Selecciona un dia para ver la tasa de ese momento",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -830,59 +830,73 @@ private fun CalendarLookupSection(
                 Text("Elegir fecha")
             }
 
-            // Resultado de la búsqueda
-            uiState.selectedDateRate?.let { sample ->
+            // Resultado de la busqueda
+            if (uiState.dateLookupDone) {
                 Spacer(Modifier.height(12.dp))
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                val sample = uiState.selectedDateRate
+                if (sample != null) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            val sampleDate = com.example.erp.data.localDateOf(
-                                sample.timestampEpochMillis
-                            )
-                            Text(
-                                text = sampleDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = sample.nombre,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                text = "$${priceFmt.format(sample.precio)}",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            sample.variacion?.let { variacion ->
-                                val signo = if (variacion >= 0) "+" else ""
-                                val color = if (variacion >= 0) trendColor() else downColor()
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "${signo}${"%.2f".format(variacion)}%",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = color
+                                    text = uiState.selectedDateLabel ?: "",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
                                 )
+                                Text(
+                                    text = sample.nombre,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "$${priceFmt.format(sample.precio)}",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                sample.variacion?.let { variacion ->
+                                    val signo = if (variacion >= 0) "+" else ""
+                                    val color = if (variacion >= 0) trendColor() else downColor()
+                                    Text(
+                                        text = "${signo}${"%.2f".format(variacion)}%",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = color
+                                    )
+                                }
                             }
                         }
                     }
+                } else {
+                    // Sin datos para esa fecha
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Sin datos para el ${uiState.selectedDateLabel ?: "ese dia"}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
-            }
-
-            // Sin datos para esa fecha
-            if (uiState.selectedDateRate == null && showDatePicker.not()) {
-                // No mostrar nada si no se ha seleccionado fecha aún
             }
         }
     }
@@ -897,9 +911,7 @@ private fun CalendarLookupSection(
             confirmButton = {
                 Button(onClick = {
                     datePickerState.selectedDateMillis?.let { millis ->
-                        val instant = java.time.Instant.ofEpochMilli(millis)
-                        val date = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
-                        viewModel.lookupDateRate(date)
+                        viewModel.lookupDateRate(millis)
                     }
                     showDatePicker = false
                 }) {

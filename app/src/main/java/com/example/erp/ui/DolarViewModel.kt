@@ -22,7 +22,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 
 data class DolarUiState(
     val quotes: List<DolarQuote> = emptyList(),
@@ -30,7 +32,9 @@ data class DolarUiState(
     val historial: List<RateSample> = emptyList(),
     val loading: Boolean = true,
     val error: Error? = null,
-    val selectedDateRate: RateSample? = null
+    val selectedDateRate: RateSample? = null,
+    val selectedDateLabel: String? = null,
+    val dateLookupDone: Boolean = false
 )
 
 /**
@@ -105,8 +109,10 @@ open class DolarViewModel @JvmOverloads constructor(
         }
     }
 
-    fun lookupDateRate(date: LocalDate) {
+    fun lookupDateRate(dateMillis: Long) {
         viewModelScope.launch {
+            // El DatePicker retorna midnight UTC; convertir directamente a LocalDate via UTC
+            val date = Instant.ofEpochMilli(dateMillis).atOffset(ZoneOffset.UTC).toLocalDate()
             val samples = historyStore.readCurrentYear()
             val selected = _uiState.value.selectedFuente
             val zoneId = java.time.ZoneId.systemDefault()
@@ -114,12 +120,18 @@ open class DolarViewModel @JvmOverloads constructor(
                 it.fuente == selected &&
                 com.example.erp.data.localDateOf(it.timestampEpochMillis, zoneId) == date
             }
-            _uiState.update { it.copy(selectedDateRate = sample) }
+            _uiState.update {
+                it.copy(
+                    selectedDateRate = sample,
+                    selectedDateLabel = date.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+                    dateLookupDone = true
+                )
+            }
         }
     }
 
     fun clearDateRate() {
-        _uiState.update { it.copy(selectedDateRate = null) }
+        _uiState.update { it.copy(selectedDateRate = null, selectedDateLabel = null, dateLookupDone = false) }
     }
 
     fun setTheme(theme: com.example.erp.ui.theme.AppTheme) {
