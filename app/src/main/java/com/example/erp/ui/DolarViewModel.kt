@@ -22,13 +22,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 data class DolarUiState(
     val quotes: List<DolarQuote> = emptyList(),
     val selectedFuente: String = "usd",
     val historial: List<RateSample> = emptyList(),
     val loading: Boolean = true,
-    val error: Error? = null
+    val error: Error? = null,
+    val selectedDateRate: RateSample? = null
 )
 
 /**
@@ -53,6 +55,7 @@ open class DolarViewModel @JvmOverloads constructor(
     val theme = themeRepository.theme
     val themeMode = themeRepository.themeMode
     val dynamicColorEnabled = themeRepository.dynamicColorEnabled
+    val highPrecisionEnabled = themeRepository.highPrecisionEnabled
 
     init {
         viewModelScope.launch {
@@ -102,6 +105,23 @@ open class DolarViewModel @JvmOverloads constructor(
         }
     }
 
+    fun lookupDateRate(date: LocalDate) {
+        viewModelScope.launch {
+            val samples = historyStore.readCurrentYear()
+            val selected = _uiState.value.selectedFuente
+            val zoneId = java.time.ZoneId.systemDefault()
+            val sample = samples.firstOrNull {
+                it.fuente == selected &&
+                com.example.erp.data.localDateOf(it.timestampEpochMillis, zoneId) == date
+            }
+            _uiState.update { it.copy(selectedDateRate = sample) }
+        }
+    }
+
+    fun clearDateRate() {
+        _uiState.update { it.copy(selectedDateRate = null) }
+    }
+
     fun setTheme(theme: com.example.erp.ui.theme.AppTheme) {
         viewModelScope.launch {
             themeRepository.setTheme(theme)
@@ -119,6 +139,12 @@ open class DolarViewModel @JvmOverloads constructor(
     fun setDynamicColorEnabled(enabled: Boolean) {
         viewModelScope.launch {
             themeRepository.setDynamicColorEnabled(enabled)
+        }
+    }
+
+    fun setHighPrecisionEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            themeRepository.setHighPrecisionEnabled(enabled)
         }
     }
 

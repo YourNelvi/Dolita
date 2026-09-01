@@ -42,9 +42,11 @@ fun ThemeBottomSheetContent(
     currentTheme: AppTheme,
     currentMode: ThemeMode,
     currentDynamicColor: Boolean,
+    currentHighPrecision: Boolean,
     onThemeChange: (AppTheme) -> Unit,
     onModeChange: (ThemeMode) -> Unit,
     onDynamicColorChange: (Boolean) -> Unit,
+    onHighPrecisionChange: (Boolean) -> Unit,
     isDynamicColorAvailable: Boolean,
     onDismiss: () -> Unit
 ) {
@@ -111,6 +113,45 @@ fun ThemeBottomSheetContent(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
             )
         }
+
+        // High Precision Toggle
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "Alta precisión",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "Muestra 4 decimales en la tasa (ej: 798,3260)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(48.dp, 28.dp)
+                    .background(
+                        if (currentHighPrecision) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        RoundedCornerShape(14.dp)
+                    )
+                    .clickable { onHighPrecisionChange(!currentHighPrecision); onDismiss() }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .background(MaterialTheme.colorScheme.onPrimary, CircleShape)
+                        .padding(start = if (currentHighPrecision) 20.dp else 0.dp)
+                )
+            }
+        }
+        androidx.compose.material3.Divider(
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+        )
 
         // Theme Mode Selector (System / Light / Dark) - Simple buttons
         Text(

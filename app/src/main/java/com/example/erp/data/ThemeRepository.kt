@@ -14,6 +14,9 @@ interface ThemeRepository {
 
     val dynamicColorEnabled: Flow<Boolean>
     suspend fun setDynamicColorEnabled(enabled: Boolean)
+
+    val highPrecisionEnabled: Flow<Boolean>
+    suspend fun setHighPrecisionEnabled(enabled: Boolean)
 }
 
 class ThemeRepositoryImpl(
@@ -40,5 +43,11 @@ class ThemeRepositoryImpl(
 
     override suspend fun setDynamicColorEnabled(enabled: Boolean) {
         themePreferences.setDynamicColorEnabled(enabled)
+    }
+
+    override val highPrecisionEnabled: Flow<Boolean> = themePreferences.highPrecisionEnabled
+
+    override suspend fun setHighPrecisionEnabled(enabled: Boolean) {
+        themePreferences.setHighPrecisionEnabled(enabled)
     }
 }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 private const val SELECTED_THEME_KEY = "selected_theme"
 private const val THEME_MODE_KEY = "theme_mode"
 private const val DYNAMIC_COLOR_ENABLED_KEY = "dynamic_color_enabled"
+private const val HIGH_PRECISION_KEY = "high_precision_enabled"
 private const val PREFS_NAME = "theme_prefs"
 
 /**
@@ -30,10 +31,12 @@ interface ThemePreferences {
     val selectedTheme: Flow<String>
     val themeMode: Flow<ThemeMode>
     val dynamicColorEnabled: Flow<Boolean>
+    val highPrecisionEnabled: Flow<Boolean>
 
     suspend fun setSelectedTheme(themeName: String)
     suspend fun setThemeMode(mode: ThemeMode)
     suspend fun setDynamicColorEnabled(enabled: Boolean)
+    suspend fun setHighPrecisionEnabled(enabled: Boolean)
 }
 
 class ThemePreferencesImpl(
@@ -54,6 +57,9 @@ class ThemePreferencesImpl(
     private val _dynamicColorEnabled = MutableStateFlow(prefs.getBoolean(DYNAMIC_COLOR_ENABLED_KEY, false))
     override val dynamicColorEnabled: Flow<Boolean> = _dynamicColorEnabled.asStateFlow()
 
+    private val _highPrecisionEnabled = MutableStateFlow(prefs.getBoolean(HIGH_PRECISION_KEY, false))
+    override val highPrecisionEnabled: Flow<Boolean> = _highPrecisionEnabled.asStateFlow()
+
     override suspend fun setSelectedTheme(themeName: String) {
         prefs.edit().putString(SELECTED_THEME_KEY, themeName).apply()
         _selectedTheme.value = themeName
@@ -67,5 +73,10 @@ class ThemePreferencesImpl(
     override suspend fun setDynamicColorEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(DYNAMIC_COLOR_ENABLED_KEY, enabled).apply()
         _dynamicColorEnabled.value = enabled
+    }
+
+    override suspend fun setHighPrecisionEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(HIGH_PRECISION_KEY, enabled).apply()
+        _highPrecisionEnabled.value = enabled
     }
 }

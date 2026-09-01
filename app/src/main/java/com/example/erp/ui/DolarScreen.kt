@@ -27,11 +27,14 @@ import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.CurrencyExchange
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -43,6 +46,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -149,6 +153,7 @@ fun DolarScreenContent(
     val currentTheme by viewModel.theme.collectAsState(initial = AppTheme.AZUL_BANCARIO)
     val currentMode by viewModel.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
     val currentDynamicColor by viewModel.dynamicColorEnabled.collectAsState(initial = false)
+    val currentHighPrecision by viewModel.highPrecisionEnabled.collectAsState(initial = false)
     val isDynamicColorAvailable = Build.VERSION.SDK_INT >= 31 // Android 12+
 
     Scaffold(
@@ -218,6 +223,8 @@ fun DolarScreenContent(
                 DolarContent(
                     uiState = uiState,
                     onSelectCasa = onSelectCasa,
+                    viewModel = viewModel,
+                    highPrecision = currentHighPrecision,
                     modifier = contentModifier
                 )
             }
@@ -237,6 +244,7 @@ fun DolarScreenContent(
                     currentTheme = currentTheme,
                     currentMode = currentMode,
                     currentDynamicColor = currentDynamicColor,
+                    currentHighPrecision = currentHighPrecision,
                     onThemeChange = { theme ->
                         viewModel.setTheme(theme)
                         showBottomSheet = false
@@ -247,6 +255,9 @@ fun DolarScreenContent(
                     },
                     onDynamicColorChange = { enabled ->
                         viewModel.setDynamicColorEnabled(enabled)
+                    },
+                    onHighPrecisionChange = { enabled ->
+                        viewModel.setHighPrecisionEnabled(enabled)
                     },
                     isDynamicColorAvailable = isDynamicColorAvailable,
                     onDismiss = { showBottomSheet = false }
@@ -260,6 +271,7 @@ fun DolarScreenContent(
                     currentTheme = currentTheme,
                     currentMode = currentMode,
                     currentDynamicColor = currentDynamicColor,
+                    currentHighPrecision = currentHighPrecision,
                     onThemeChange = { theme ->
                         viewModel.setTheme(theme)
                         showBottomSheet = false
@@ -270,6 +282,9 @@ fun DolarScreenContent(
                     },
                     onDynamicColorChange = { enabled ->
                         viewModel.setDynamicColorEnabled(enabled)
+                    },
+                    onHighPrecisionChange = { enabled ->
+                        viewModel.setHighPrecisionEnabled(enabled)
                     },
                     isDynamicColorAvailable = isDynamicColorAvailable,
                     onDismiss = { showBottomSheet = false }
@@ -326,6 +341,8 @@ private fun ErrorState(
 private fun DolarContent(
     uiState: DolarUiState,
     onSelectCasa: (String) -> Unit,
+    viewModel: DolarViewModel,
+    highPrecision: Boolean,
     modifier: Modifier = Modifier
 ) {
     val selected = uiState.quotes.firstOrNull { it.fuente == uiState.selectedFuente }
@@ -337,7 +354,7 @@ private fun DolarContent(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            FeaturedCard(quote = selected)
+            FeaturedCard(quote = selected, highPrecision = highPrecision)
         }
 
         item {
@@ -360,6 +377,9 @@ private fun DolarContent(
                 item { HistoricoChartCard(samples = historico.samples) }
             }
         }
+
+        // Calendario: consultar tasa por fecha
+        item { CalendarLookupSection(uiState = uiState, viewModel = viewModel) }
 
         item { SectionHeader("Cotizaciones") }
         items(uiState.quotes, key = { it.fuente }) { quote ->
@@ -385,10 +405,16 @@ private fun DolarContent(
 }
 
 @Composable
-private fun FeaturedCard(quote: DolarQuote?) {
+private fun FeaturedCard(quote: DolarQuote?, highPrecision: Boolean = false) {
     if (quote == null) return
     val primary = MaterialTheme.colorScheme.primary
     val shape = RoundedCornerShape(28.dp)
+    val fracDigits = if (highPrecision) 4 else 2
+    val featPriceFormatter = NumberFormat.getNumberInstance(Locale.getDefault()).apply {
+        minimumFractionDigits = fracDigits
+        maximumFractionDigits = fracDigits
+    }
+    fun featFormatPrice(value: Double): String = "$${featPriceFormatter.format(value)}"
     Card(
         shape = shape,
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
@@ -419,7 +445,7 @@ private fun FeaturedCard(quote: DolarQuote?) {
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                text = formatPrice(quote.promedio),
+                text = featFormatPrice(quote.promedio),
                 style = MaterialTheme.typography.displayLarge,
                 color = MaterialTheme.colorScheme.onPrimary
             )
@@ -462,9 +488,19 @@ private fun FeaturedCard(quote: DolarQuote?) {
                     label = "Fuente",
                     value = quote.fuente.uppercase()
                 )
-                FeaturedStat(label = "Promedio", value = formatPrice(quote.promedio))
+                FeaturedStat(label = "Promedio", value = featFormatPrice(quote.promedio))
                 quote.anterior?.let {
-                    FeaturedStat(label = "Anterior", value = formatPrice(it))
+                    FeaturedStat(label = "Anterior", value = featFormatPrice(it))
+                }
+                quote.anterior?.let { anterior ->
+                    val cambio = quote.promedio - anterior
+                    val signo = if (cambio >= 0) "+" else ""
+                    val color = if (cambio >= 0) trendColor() else downColor()
+                    FeaturedStatColored(
+                        label = "Cambio",
+                        value = "${signo}${featPriceFormatter.format(cambio)} Bs",
+                        color = color
+                    )
                 }
             }
         }
@@ -484,6 +520,24 @@ private fun FeaturedStat(label: String, value: String) {
             text = value,
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onPrimary,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun FeaturedStatColored(label: String, value: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            color = color,
             fontWeight = FontWeight.Bold
         )
     }
@@ -728,6 +782,140 @@ private fun SinDatosCard() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CalendarLookupSection(
+    uiState: DolarUiState,
+    viewModel: DolarViewModel
+) {
+    var showDatePicker by remember { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState()
+    val priceFmt = remember { NumberFormat.getNumberInstance(Locale.getDefault()).apply {
+        minimumFractionDigits = 2
+        maximumFractionDigits = 2
+    } }
+
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                text = "Consultar por fecha",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Seleccioná un día para ver la tasa de ese momento",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(12.dp))
+
+            Button(onClick = { showDatePicker = true }) {
+                Icon(
+                    imageVector = Icons.Rounded.CalendarMonth,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Elegir fecha")
+            }
+
+            // Resultado de la búsqueda
+            uiState.selectedDateRate?.let { sample ->
+                Spacer(Modifier.height(12.dp))
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            val sampleDate = com.example.erp.data.localDateOf(
+                                sample.timestampEpochMillis
+                            )
+                            Text(
+                                text = sampleDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = sample.nombre,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = "$${priceFmt.format(sample.precio)}",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            sample.variacion?.let { variacion ->
+                                val signo = if (variacion >= 0) "+" else ""
+                                val color = if (variacion >= 0) trendColor() else downColor()
+                                Text(
+                                    text = "${signo}${"%.2f".format(variacion)}%",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = color
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Sin datos para esa fecha
+            if (uiState.selectedDateRate == null && showDatePicker.not()) {
+                // No mostrar nada si no se ha seleccionado fecha aún
+            }
+        }
+    }
+
+    // DatePicker Dialog
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = {
+                showDatePicker = false
+                viewModel.clearDateRate()
+            },
+            confirmButton = {
+                Button(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val instant = java.time.Instant.ofEpochMilli(millis)
+                        val date = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                        viewModel.lookupDateRate(date)
+                    }
+                    showDatePicker = false
+                }) {
+                    Text("Ver tasa")
+                }
+            },
+            dismissButton = {
+                Button(onClick = {
+                    showDatePicker = false
+                    viewModel.clearDateRate()
+                }) {
+                    Text("Cancelar")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
         }
     }
 }
