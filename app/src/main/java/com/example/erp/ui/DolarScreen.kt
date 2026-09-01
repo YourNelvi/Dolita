@@ -354,7 +354,12 @@ private fun DolarContent(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            FeaturedCard(quote = selected, highPrecision = highPrecision)
+            FeaturedCard(quote = selected, highPrecision = highPrecision, futureQuote = uiState.futureQuote)
+        }
+
+        // Proxima tasa (si el API ya publico la de manana)
+        uiState.futureQuote?.let { future ->
+            item { ProximaTasaCard(future = future, highPrecision = highPrecision) }
         }
 
         item {
@@ -405,7 +410,7 @@ private fun DolarContent(
 }
 
 @Composable
-private fun FeaturedCard(quote: DolarQuote?, highPrecision: Boolean = false) {
+private fun FeaturedCard(quote: DolarQuote?, highPrecision: Boolean = false, futureQuote: DolarQuote? = null) {
     if (quote == null) return
     val primary = MaterialTheme.colorScheme.primary
     val shape = RoundedCornerShape(28.dp)
@@ -540,6 +545,50 @@ private fun FeaturedStatColored(label: String, value: String, color: Color) {
             color = color,
             fontWeight = FontWeight.Bold
         )
+    }
+}
+
+@Composable
+private fun ProximaTasaCard(future: DolarQuote, highPrecision: Boolean = false) {
+    val fracDigits = if (highPrecision) 4 else 2
+    val fmt = NumberFormat.getNumberInstance(Locale.getDefault()).apply {
+        minimumFractionDigits = fracDigits
+        maximumFractionDigits = fracDigits
+    }
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Text(
+                    text = "Proxima tasa",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+                Text(
+                    text = formatUpdated(future.fechaActualizacion),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = "$${fmt.format(future.promedio)}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.tertiary
+            )
+        }
     }
 }
 

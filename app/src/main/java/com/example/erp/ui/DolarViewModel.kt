@@ -34,7 +34,8 @@ data class DolarUiState(
     val error: Error? = null,
     val selectedDateRate: RateSample? = null,
     val selectedDateLabel: String? = null,
-    val dateLookupDone: Boolean = false
+    val dateLookupDone: Boolean = false,
+    val futureQuote: DolarQuote? = null
 )
 
 /**
@@ -51,6 +52,9 @@ open class DolarViewModel @JvmOverloads constructor(
 
     /** One USDT sample per app-open window (flag lives as long as the ViewModel). */
     private var usdtSampledThisSession = false
+
+    /** Raw API quotes before date transformation, for source switching. */
+    private var rawApiQuotes: List<DolarQuote> = emptyList()
 
     private val _uiState = MutableStateFlow(DolarUiState())
     val uiState: StateFlow<DolarUiState> = _uiState.asStateFlow()
@@ -74,19 +78,64 @@ open class DolarViewModel @JvmOverloads constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true, error = null) }
             try {
-                val quotes = repository.getQuotes()
-                val selected = quotes.firstOrNull { it.fuente == _uiState.value.selectedFuente }
-                    ?: quotes.firstOrNull()
+                val rawQuotes = repository.getQuotes()
+                rawApiQuotes = rawQuotes
+                val today = java.time.LocalDate.now()
+                val zoneId = java.time.ZoneId.systemDefault()
+
+                // Separar cotizaciones: las de hoy vs las de manana
+                val todayQuotes = mutableListOf<DolarQuote>()
+                var futureUsd: DolarQuote? = null
+                var futureEur: DolarQuote? = null
+
+                rawQuotes.forEach { quote ->
+                    val quoteDate = try {
+                        java.time.LocalDate.parse(quote.fechaActualizacion)
+                    } catch (e: Exception) { null }
+
+                    if (quoteDate != null && quoteDate.isAfter(today)) {
+                        // Es tasa de manana -> guardar como futura
+                        when (quote.fuente) {
+                            "usd" -> futureUsd = quote
+                            "eur" -> futureEur = quote
+                        }
+                        // Construir la tasa de HOY usando el campo "anterior" del API
+                        quote.anterior?.let { anterior ->
+                            todayQuotes.add(
+                                quote.copy(
+                                    promedio = anterior,
+                                    fechaActualizacion = today.toString(),
+                                    anterior = null,
+                                    variacion = null
+                                )
+                            )
+                        }
+                    } else {
+                        todayQuotes.add(quote)
+                    }
+                }
+
+                val selected = todayQuotes.firstOrNull { it.fuente == _uiState.value.selectedFuente }
+                    ?: todayQuotes.firstOrNull()
                 val historial = selected
-                    ?.let { sampleAndPersist(quotes).filter { sample -> sample.fuente == it.fuente } }
+                    ?.let { sampleAndPersist(todayQuotes).filter { sample -> sample.fuente == it.fuente } }
                     ?: emptyList()
+
+                // La "proxima tasa" es el quote futuro de la fuente seleccionada
+                val futureForSelected = when (_uiState.value.selectedFuente) {
+                    "usd" -> futureUsd
+                    "eur" -> futureEur
+                    else -> null
+                }
+
                 _uiState.update {
                     it.copy(
-                        quotes = quotes,
+                        quotes = todayQuotes,
                         selectedFuente = selected?.fuente ?: it.selectedFuente,
                         historial = historial,
                         loading = false,
-                        error = null
+                        error = null,
+                        futureQuote = futureForSelected
                     )
                 }
             } catch (exception: Exception) {
@@ -105,7 +154,14 @@ open class DolarViewModel @JvmOverloads constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(selectedFuente = fuente) }
             val historial = historyStore.readCurrentYear().filter { it.fuente == fuente }
-            _uiState.update { it.copy(historial = historial) }
+            // Reconstruir futureQuote para la nueva fuente
+            val today = java.time.LocalDate.now()
+            val futureForSelected = rawApiQuotes.firstOrNull { quote ->
+                quote.fuente == fuente && try {
+                    java.time.LocalDate.parse(quote.fechaActualizacion).isAfter(today)
+                } catch (e: Exception) { false }
+            }
+            _uiState.update { it.copy(historial = historial, futureQuote = futureForSelected) }
         }
     }
 
