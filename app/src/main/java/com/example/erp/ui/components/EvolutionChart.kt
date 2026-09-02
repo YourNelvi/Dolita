@@ -1,19 +1,11 @@
 package com.example.erp.ui.components
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.PagerState
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,8 +15,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.erp.data.RateSample
@@ -33,6 +30,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.min
 
 @Composable
 fun EvolutionChart(
@@ -44,13 +43,11 @@ fun EvolutionChart(
 ) {
     if (samples.isEmpty()) {
         Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .height(180.dp),
+            modifier = modifier.fillMaxWidth().height(200.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "Sin datos históricos",
+                text = "Sin datos historicos",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -58,71 +55,212 @@ fun EvolutionChart(
         return
     }
 
-    val sortedSamples = samples.sortedBy { it.timestampEpochMillis }
-    val priceFormat = NumberFormat.getNumberInstance(locale).apply {
-        minimumFractionDigits = 2
-        maximumFractionDigits = 2
+    // Tomar ultimos 15 dias
+    val sorted = remember(samples) {
+        samples.sortedBy { it.timestampEpochMillis }.takeLast(15)
     }
-    val dayFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy").withZone(zoneId)
-
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { sortedSamples.size })
-
-    HorizontalPager(
-        state = pagerState,
-        modifier = modifier.fillMaxWidth()
-    ) { page ->
-        val sample = sortedSamples[page]
-        val dateStr = dayFormat.format(Instant.ofEpochMilli(sample.timestampEpochMillis))
-        val rateStr = "\$${priceFormat.format(sample.precio)}"
-        val variationStr = sample.variacion?.let { v ->
-            val sign = if (v >= 0) "+" else ""
-            "${sign}${priceFormat.format(v)}%"
+    val priceFormat = remember(locale) {
+        NumberFormat.getNumberInstance(locale).apply {
+            minimumFractionDigits = 2
+            maximumFractionDigits = 2
         }
+    }
+    val dayFormat = remember(zoneId) {
+        DateTimeFormatter.ofPattern("dd/MM").withZone(zoneId)
+    }
+    val fullDateFormat = remember(zoneId) {
+        DateTimeFormatter.ofPattern("dd/MM/yyyy").withZone(zoneId)
+    }
 
-        Card(
+    var selectedIndex by remember { mutableStateOf(-1) }
+
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val tertiaryColor = MaterialTheme.colorScheme.tertiary
+    val errorColor = MaterialTheme.colorScheme.error
+    val outlineColor = MaterialTheme.colorScheme.outline
+
+    val density = LocalDensity.current
+    val textSizePx = with(density) { 12.sp.toPx() }
+    val smallTextSizePx = with(density) { 10.sp.toPx() }
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            elevation = CardDefaults.cardElevation(
-                defaultElevation = 2.dp,
-                pressedElevation = 4.dp
-            ),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.9f)
-            )
+                .height(200.dp)
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+                .pointerInput(sorted.size) {
+                    detectTapGestures { offset ->
+                        if (sorted.isEmpty()) return@detectTapGestures
+                        val canvasWidth = size.width.toFloat()
+                        val padding = 24f
+                        val chartWidth = canvasWidth - padding * 2
+                        val step = if (sorted.size > 1) chartWidth / (sorted.size - 1) else chartWidth
+                        // Encontrar el punto mas cercano al toque
+                        var closestIdx = 0
+                        var closestDist = Float.MAX_VALUE
+                        sorted.forEachIndexed { idx, _ ->
+                            val x = padding + idx * step
+                            val dist = abs(offset.x - x)
+                            if (dist < closestDist) {
+                                closestDist = dist
+                                closestIdx = idx
+                            }
+                        }
+                        selectedIndex = if (selectedIndex == closestIdx) -1 else closestIdx
+                    }
+                }
         ) {
-            Column(
+            val canvasWidth = size.width
+            val canvasHeight = size.height
+            val padding = 24f
+            val chartWidth = canvasWidth - padding * 2
+            val chartHeight = canvasHeight - padding * 2
+
+            if (sorted.isEmpty()) return@Canvas
+
+            val precios = sorted.map { it.precio }
+            val minPrice = precios.min()
+            val maxPrice = precios.max()
+            val range = if (maxPrice - minPrice < 0.01) 1.0 else maxPrice - minPrice
+
+            val step = if (sorted.size > 1) chartWidth / (sorted.size - 1) else chartWidth
+
+            // Dibujar linea de guia horizontal (grid sutil)
+            for (i in 0..4) {
+                val y = padding + chartHeight - (chartHeight * i / 4f)
+                drawLine(
+                    color = outlineColor.copy(alpha = 0.2f),
+                    start = Offset(padding, y),
+                    end = Offset(canvasWidth - padding, y),
+                    strokeWidth = 1f
+                )
+            }
+
+            // Calcular puntos
+            val points = sorted.mapIndexed { idx, sample ->
+                val x = padding + idx * step
+                val normalized = (sample.precio - minPrice) / range
+                val y = padding + chartHeight - (chartHeight * normalized.toFloat())
+                Offset(x, y)
+            }
+
+            // Dibujar area bajo la curva
+            val areaPath = Path().apply {
+                moveTo(points.first().x, padding + chartHeight)
+                points.forEach { lineTo(it.x, it.y) }
+                lineTo(points.last().x, padding + chartHeight)
+                close()
+            }
+            drawPath(
+                path = areaPath,
+                color = primaryColor.copy(alpha = 0.08f)
+            )
+
+            // Dibujar linea
+            val linePath = Path().apply {
+                moveTo(points.first().x, points.first().y)
+                for (i in 1 until points.size) {
+                    lineTo(points[i].x, points[i].y)
+                }
+            }
+            drawPath(
+                path = linePath,
+                color = primaryColor,
+                style = Stroke(width = 2.5f)
+            )
+
+            // Dibujar puntos
+            points.forEachIndexed { idx, pt ->
+                val isSelected = idx == selectedIndex
+                val radius = if (isSelected) 6f else 3.5f
+                val sample = sorted[idx]
+                val dotColor = when {
+                    isSelected -> primaryColor
+                    sample.variacion != null && sample.variacion >= 0 -> tertiaryColor
+                    sample.variacion != null && sample.variacion < 0 -> errorColor
+                    else -> primaryColor
+                }
+                drawCircle(color = dotColor, radius = radius, center = pt)
+                if (isSelected) {
+                    drawCircle(
+                        color = primaryColor.copy(alpha = 0.25f),
+                        radius = 12f,
+                        center = pt
+                    )
+                }
+            }
+
+            // Etiquetas de eje X (primeros, ultimo, y seleccionado)
+            val labelPaint = android.graphics.Paint().apply {
+                color = onSurface.hashCode()
+                textSize = smallTextSizePx
+                textAlign = android.graphics.Paint.Align.CENTER
+                isAntiAlias = true
+            }
+            // Primera fecha
+            drawContext.canvas.nativeCanvas.drawText(
+                dayFormat.format(Instant.ofEpochMilli(sorted.first().timestampEpochMillis)),
+                points.first().x,
+                canvasHeight - 2f,
+                labelPaint
+            )
+            // Ultima fecha (si hay mas de 1 punto)
+            if (sorted.size > 1) {
+                drawContext.canvas.nativeCanvas.drawText(
+                    dayFormat.format(Instant.ofEpochMilli(sorted.last().timestampEpochMillis)),
+                    points.last().x,
+                    canvasHeight - 2f,
+                    labelPaint
+                )
+            }
+        }
+
+        // Tooltip flotante cuando se selecciona un punto
+        if (selectedIndex in sorted.indices) {
+            val sample = sorted[selectedIndex]
+            val dateStr = fullDateFormat.format(Instant.ofEpochMilli(sample.timestampEpochMillis))
+            val priceStr = "$${priceFormat.format(sample.precio)}"
+            val varStr = sample.variacion?.let { v ->
+                val sign = if (v >= 0) "+" else ""
+                "${sign}${priceFormat.format(v)}%"
+            }
+            val varColor = when {
+                sample.variacion == null -> onSurface
+                sample.variacion >= 0 -> tertiaryColor
+                else -> errorColor
+            }
+
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = dateStr,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = rateStr,
-                    style = MaterialTheme.typography.displayLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                variationStr?.let {
-                    Spacer(Modifier.height(4.dp))
+                androidx.compose.foundation.layout.Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(
-                        text = it,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Medium,
-                        color = if (sample.variacion!! >= 0)
-                            MaterialTheme.colorScheme.tertiary
-                        else
-                            MaterialTheme.colorScheme.error
+                        text = dateStr,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = onSurface.copy(alpha = 0.7f)
                     )
+                    Text(
+                        text = priceStr,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        color = primaryColor
+                    )
+                    varStr?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            color = varColor
+                        )
+                    }
                 }
             }
         }

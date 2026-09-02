@@ -789,16 +789,16 @@ private fun HistoricoChartCard(samples: List<com.example.erp.data.RateSample>) {
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(
-                text = "Evolución del año (desliza para ver detalles)",
+                text = "Ultimos 15 dias (toca un punto para ver precio)",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
             EvolutionChart(
                 samples = samples,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
+                    .height(220.dp)
             )
         }
     }
