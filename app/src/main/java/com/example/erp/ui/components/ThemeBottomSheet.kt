@@ -55,15 +55,33 @@ fun ThemeBottomSheetContent(
             .fillMaxWidth()
             .padding(24.dp)
     ) {
-        // Handle bar
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .padding(12.dp)
-                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), RoundedCornerShape(2.dp)),
-            contentAlignment = Alignment.Center
-        ) {}
+        // Handle bar + Close button
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(4.dp)
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), RoundedCornerShape(2.dp))
+            )
+            Box(
+                modifier = Modifier
+                    .padding(start = 16.dp)
+                    .size(32.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+                    .clickable { onDismiss() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "✕",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
 
         // Title
         Text(
@@ -99,7 +117,7 @@ fun ThemeBottomSheetContent(
                             if (currentDynamicColor) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                             RoundedCornerShape(14.dp)
                         )
-                        .clickable { onDynamicColorChange(!currentDynamicColor); onDismiss() }
+                        .clickable { onDynamicColorChange(!currentDynamicColor) }
                 ) {
                     Box(
                         modifier = Modifier
@@ -139,7 +157,7 @@ fun ThemeBottomSheetContent(
                         if (currentHighPrecision) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                         RoundedCornerShape(14.dp)
                     )
-                    .clickable { onHighPrecisionChange(!currentHighPrecision); onDismiss() }
+                    .clickable { onHighPrecisionChange(!currentHighPrecision) }
             ) {
                 Box(
                     modifier = Modifier
@@ -174,7 +192,7 @@ fun ThemeBottomSheetContent(
                             shape = RoundedCornerShape(16.dp)
                         )
                         .padding(16.dp)
-                        .clickable { onModeChange(mode); onDismiss() }
+                        .clickable { onModeChange(mode) }
                 ) {
                     Text(
                         text = mode.displayName,
@@ -208,7 +226,7 @@ fun ThemeBottomSheetContent(
                     theme = theme,
                     isSelected = currentTheme == theme,
                     isEnabled = true,
-                    onClick = { onThemeChange(theme); onDismiss() }
+                    onClick = { onThemeChange(theme) }
                 )
             }
         }

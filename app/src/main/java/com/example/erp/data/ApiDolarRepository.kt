@@ -76,6 +76,7 @@ class ApiDolarRepository : DolarRepository {
         val previous = root.optJSONObject("previous")
         val change = root.optJSONObject("changePercentage")
         val date = current.optString("date", "")
+        val previousDate = previous?.optString("date")
         return listOf(
             DolarQuote(
                 fuente = "usd",
@@ -83,7 +84,8 @@ class ApiDolarRepository : DolarRepository {
                 promedio = current.optDouble("usd", 0.0),
                 anterior = previous?.optDouble("usd"),
                 variacion = change?.optDouble("usd"),
-                fechaActualizacion = date
+                fechaActualizacion = date,
+                fechaAnterior = previousDate
             ),
             DolarQuote(
                 fuente = "eur",
@@ -91,7 +93,8 @@ class ApiDolarRepository : DolarRepository {
                 promedio = current.optDouble("eur", 0.0),
                 anterior = previous?.optDouble("eur"),
                 variacion = change?.optDouble("eur"),
-                fechaActualizacion = date
+                fechaActualizacion = date,
+                fechaAnterior = previousDate
             )
         )
     }

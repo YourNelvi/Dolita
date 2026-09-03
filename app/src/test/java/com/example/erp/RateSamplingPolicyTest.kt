@@ -44,7 +44,7 @@ class RateSamplingPolicyTest {
     )
 
     @Test
-    fun `bcv same day second load dedupes to no new samples`() {
+    fun `bcv same day second load replaces with new data`() {
         val first = RateSamplingPolicy.shouldSample(
             existing = emptyList(),
             quotes = listOf(usdQuote, eurQuote),
@@ -55,14 +55,17 @@ class RateSamplingPolicyTest {
         assertEquals(listOf("usd", "eur"), first.map { it.fuente })
         assertEquals(773.31, first.first { it.fuente == "usd" }.precio, 0.0)
 
+        // Now with a different price — should always produce new samples (replace seed data)
+        val updatedUsd = usdQuote.copy(promedio = 780.00)
         val second = RateSamplingPolicy.shouldSample(
             existing = first,
-            quotes = listOf(usdQuote, eurQuote),
+            quotes = listOf(updatedUsd, eurQuote),
             nowEpochMillis = eveningEpochMillis,
             usdtSampledThisSession = false,
             zoneId = caracas
         )
-        assertEquals(emptyList<RateSample>(), second)
+        assertEquals(listOf("usd", "eur"), second.map { it.fuente })
+        assertEquals(780.00, second.first { it.fuente == "usd" }.precio, 0.0)
     }
 
     @Test

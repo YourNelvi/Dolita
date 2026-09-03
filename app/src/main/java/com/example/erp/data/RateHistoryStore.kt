@@ -14,6 +14,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.TimeUnit
 
 /**
  * Persists [RateSample]s into per-year JSON files (`rates-YYYY.json`).
@@ -25,6 +26,10 @@ interface RateHistoryStore {
     suspend fun readCurrentYear(): List<RateSample>
     /** Ensures the current-year file exists and is seeded with historical data if empty. */
     suspend fun ensureSeeded()
+    /** Fetches historical data from API and populates the store (one-time). */
+    suspend fun fetchAndPopulateHistorical()
+    /** Returns true if the store has any real data (not just empty). */
+    suspend fun hasData(): Boolean
 }
 
 /**
@@ -45,7 +50,14 @@ class FileHistoryStore(
                 samples.groupBy { rateYearName(it.timestampEpochMillis, zoneId) }
                     .forEach { (fileName, yearSamples) ->
                         val target = File(dir, fileName)
-                        val merged = (readSamples(target) + yearSamples)
+                        val existing = readSamples(target)
+                        val filtered = existing.filter { old ->
+                            yearSamples.none { new ->
+                                new.fuente == old.fuente &&
+                                localDateOf(new.timestampEpochMillis, zoneId) == localDateOf(old.timestampEpochMillis, zoneId)
+                            }
+                        }
+                        val merged = (filtered + yearSamples)
                             .sortedBy { it.timestampEpochMillis }
                         writeAtomically(target, RateHistoryCodec.encode(merged))
                     }
@@ -64,10 +76,98 @@ class FileHistoryStore(
         withContext(Dispatchers.IO) {
             val currentYearFile = File(dir, rateYearName(System.currentTimeMillis(), zoneId))
             if (!currentYearFile.exists() || currentYearFile.length() == 0L) {
-                val seeded = seedDataForCurrentYear()
-                writeAtomically(currentYearFile, RateHistoryCodec.encode(seeded))
+                // No fake seed — leave empty until real data arrives
             }
         }
+    }
+
+    override suspend fun hasData(): Boolean = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            val currentYearFile = File(dir, rateYearName(System.currentTimeMillis(), zoneId))
+            currentYearFile.exists() && currentYearFile.length() > 0L
+        }
+    }
+
+    override suspend fun fetchAndPopulateHistorical() {
+        // Fetch from ve.dolarapi.com and populate
+        val historicalData = try {
+            fetchHistoricalFromApi()
+        } catch (e: Exception) {
+            android.util.Log.w("RateHistoryStore", "Historical fetch failed: ${e.message}")
+            return
+        }
+        if (historicalData.isEmpty()) return
+
+        mutex.withLock {
+            withContext(Dispatchers.IO) {
+                historicalData.groupBy { rateYearName(it.timestampEpochMillis, zoneId) }
+                    .forEach { (fileName, yearSamples) ->
+                        val target = File(dir, fileName)
+                        val existing = readSamples(target)
+                        val filtered = existing.filter { old ->
+                            yearSamples.none { new ->
+                                new.fuente == old.fuente &&
+                                localDateOf(new.timestampEpochMillis, zoneId) == localDateOf(old.timestampEpochMillis, zoneId)
+                            }
+                        }
+                        val merged = (filtered + yearSamples)
+                            .sortedBy { it.timestampEpochMillis }
+                        writeAtomically(target, RateHistoryCodec.encode(merged))
+                    }
+            }
+        }
+    }
+
+    /**
+     * Fetches historical USD rates from ve.dolarapi.com API.
+     * Returns list of RateSample with real BCV data.
+     */
+    private fun fetchHistoricalFromApi(): List<RateSample> {
+        val url = "https://ve.dolarapi.com/v1/historicos/dolares/oficial"
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .build()
+
+        val request = okhttp3.Request.Builder()
+            .url(url)
+            .header("Accept", "application/json")
+            .build()
+
+        val response = client.newCall(request).execute()
+        val body = response.body?.string().orEmpty()
+
+        if (response.code != 200) {
+            throw Exception("HTTP ${response.code}")
+        }
+
+        val samples = mutableListOf<RateSample>()
+        val root = org.json.JSONArray(body)
+
+        for (i in 0 until root.length()) {
+            val item = root.optJSONObject(i) ?: continue
+            val fecha = item.optString("fecha", "")
+            val promedio = item.optDouble("promedio", 0.0)
+
+            if (fecha.isBlank() || promedio <= 0.0) continue
+
+            try {
+                val date = java.time.LocalDate.parse(fecha, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+                val timestamp = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
+
+                samples.add(RateSample(
+                    fuente = "usd",
+                    nombre = "Dólar (BCV)",
+                    precio = promedio,
+                    timestampEpochMillis = timestamp,
+                    anterior = null,
+                    variacion = null
+                ))
+            } catch (e: Exception) {
+                // Skip invalid dates
+            }
+        }
+        return samples
     }
 
     private fun readSamples(file: File): List<RateSample> {
@@ -92,59 +192,6 @@ class FileHistoryStore(
         } catch (e: AtomicMoveNotSupportedException) {
             Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }
-    }
-
-    /**
-     * Generates ~30 days of BCV historical data (USD + EUR) ending today.
-     * Rates progress from ~745 to current ~775 for USD, ~862 to ~897 for EUR.
-     */
-    private fun seedDataForCurrentYear(): List<RateSample> {
-        val now = System.currentTimeMillis()
-        val currentDate = localDateOf(now, zoneId)
-
-        // Base rates (30 days ago)
-        var usd = 745.12
-        var eur = 862.45
-        val usdCurrent = 775.34
-        val eurCurrent = 897.82
-        val days = 30
-        val usdStep = (usdCurrent - usd) / (days - 1)
-        val eurStep = (eurCurrent - eur) / (days - 1)
-
-        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-        val samples = mutableListOf<RateSample>()
-
-        for (i in 0 until days) {
-            val date = currentDate.minusDays((days - 1 - i).toLong())
-            val ts = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
-
-            val prevUsd = if (i == 0) usd else usd - usdStep
-            val prevEur = if (i == 0) eur else eur - eurStep
-
-            val usdVar = if (i == 0) 0.0 else ((usd - prevUsd) / prevUsd * 100)
-            val eurVar = if (i == 0) 0.0 else ((eur - prevEur) / prevEur * 100)
-
-            samples.add(RateSample(
-                fuente = "usd",
-                nombre = "Dólar (BCV)",
-                precio = usd,
-                timestampEpochMillis = date.atStartOfDay(zoneId).toInstant().toEpochMilli(),
-                anterior = if (i == 0) null else prevUsd,
-                variacion = if (i == 0) null else usdVar
-            ))
-            samples.add(RateSample(
-                fuente = "eur",
-                nombre = "Euro (BCV)",
-                precio = eur,
-                timestampEpochMillis = date.atStartOfDay(zoneId).toInstant().toEpochMilli(),
-                anterior = if (i == 0) null else prevEur,
-                variacion = if (i == 0) null else eurVar
-            ))
-
-            usd += usdStep
-            eur += eurStep
-        }
-        return samples
     }
 }
 
@@ -176,19 +223,16 @@ object RateSamplingPolicy {
         quotes: List<DolarQuote>,
         nowEpochMillis: Long,
         usdtSampledThisSession: Boolean,
+        previousDateMillis: Long? = null,
         zoneId: ZoneId = ZoneId.systemDefault()
     ): List<RateSample> {
         val newSamples = mutableListOf<RateSample>()
-
-        fun alreadySampledToday(fuente: String): Boolean {
-            val today = localDateOf(nowEpochMillis, zoneId)
-            return existing.any { it.fuente == fuente && localDateOf(it.timestampEpochMillis, zoneId) == today } ||
-                newSamples.any { it.fuente == fuente }
-        }
+        val today = localDateOf(nowEpochMillis, zoneId)
 
         quotes.forEach { quote ->
             when (quote.fuente) {
-                "usd", "eur" -> if (!alreadySampledToday(quote.fuente)) {
+                "usd", "eur" -> {
+                    // Always sample today (overwrites seed data)
                     newSamples.add(
                         RateSample(
                             fuente = quote.fuente,
@@ -199,8 +243,33 @@ object RateSamplingPolicy {
                             variacion = quote.variacion
                         )
                     )
+                    // Also sample the "previous" date from the API if different from today
+                    if (previousDateMillis != null && quote.anterior != null) {
+                        val prevDate = localDateOf(previousDateMillis, zoneId)
+                        if (prevDate != today) {
+                            val alreadyHasPrev = existing.any {
+                                it.fuente == quote.fuente &&
+                                localDateOf(it.timestampEpochMillis, zoneId) == prevDate
+                            } || newSamples.any {
+                                it.fuente == quote.fuente &&
+                                localDateOf(it.timestampEpochMillis, zoneId) == prevDate
+                            }
+                            if (!alreadyHasPrev) {
+                                newSamples.add(
+                                    RateSample(
+                                        fuente = quote.fuente,
+                                        nombre = quote.nombre,
+                                        precio = quote.anterior,
+                                        timestampEpochMillis = previousDateMillis,
+                                        anterior = null,
+                                        variacion = null
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
-                "usdt" -> if (!usdtSampledThisSession && !alreadySampledToday(quote.fuente)) {
+                "usdt" -> if (!usdtSampledThisSession) {
                     newSamples.add(
                         RateSample(
                             fuente = quote.fuente,

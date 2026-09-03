@@ -97,12 +97,15 @@ fun EvolutionChart(
                         val canvasWidth = size.width.toFloat()
                         val padding = 24f
                         val chartWidth = canvasWidth - padding * 2
-                        val step = if (sorted.size > 1) chartWidth / (sorted.size - 1) else chartWidth
-                        // Encontrar el punto mas cercano al toque
+                        val firstTimestamp = sorted.first().timestampEpochMillis
+                        val lastTimestamp = sorted.last().timestampEpochMillis
+                        val totalDuration = if (lastTimestamp > firstTimestamp) lastTimestamp - firstTimestamp else 1L
+                        // Encontrar el punto mas cercano al toque usando fechas reales
                         var closestIdx = 0
                         var closestDist = Float.MAX_VALUE
-                        sorted.forEachIndexed { idx, _ ->
-                            val x = padding + idx * step
+                        sorted.forEachIndexed { idx, sample ->
+                            val xRatio = (sample.timestampEpochMillis - firstTimestamp).toFloat() / totalDuration.toFloat()
+                            val x = padding + xRatio * chartWidth
                             val dist = abs(offset.x - x)
                             if (dist < closestDist) {
                                 closestDist = dist
@@ -126,7 +129,10 @@ fun EvolutionChart(
             val maxPrice = precios.max()
             val range = if (maxPrice - minPrice < 0.01) 1.0 else maxPrice - minPrice
 
-            val step = if (sorted.size > 1) chartWidth / (sorted.size - 1) else chartWidth
+            // Use actual date range for X axis (handles gaps from weekends)
+            val firstTimestamp = sorted.first().timestampEpochMillis
+            val lastTimestamp = sorted.last().timestampEpochMillis
+            val totalDuration = if (lastTimestamp > firstTimestamp) lastTimestamp - firstTimestamp else 1L
 
             // Dibujar linea de guia horizontal (grid sutil)
             for (i in 0..4) {
@@ -139,9 +145,10 @@ fun EvolutionChart(
                 )
             }
 
-            // Calcular puntos
-            val points = sorted.mapIndexed { idx, sample ->
-                val x = padding + idx * step
+            // Calcular puntos usando fechas reales
+            val points = sorted.map { sample ->
+                val xRatio = (sample.timestampEpochMillis - firstTimestamp).toFloat() / totalDuration.toFloat()
+                val x = padding + xRatio * chartWidth
                 val normalized = (sample.precio - minPrice) / range
                 val y = padding + chartHeight - (chartHeight * normalized.toFloat())
                 Offset(x, y)

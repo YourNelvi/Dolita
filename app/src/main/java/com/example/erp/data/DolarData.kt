@@ -9,7 +9,8 @@ data class DolarQuote(
     val promedio: Double,
     val anterior: Double? = null,
     val variacion: Double? = null,
-    val fechaActualizacion: String
+    val fechaActualizacion: String,
+    val fechaAnterior: String? = null
 )
 
 data class RateSample(

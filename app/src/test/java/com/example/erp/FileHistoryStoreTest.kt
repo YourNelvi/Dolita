@@ -96,8 +96,10 @@ class FileHistoryStoreTest {
     fun `concurrent appends serialize and keep every sample with valid json`() = runBlocking {
         val store = FileHistoryStore(tmp.root, zone)
         val count = 20
+        // Use different dates so they don't get replaced by same-day logic
         (1..count).map { i ->
-            async { store.append(listOf(sample("usd", 700.0 + i))) }
+            val date = LocalDate.of(thisYear, 3, 1).plusDays(i.toLong())
+            async { store.append(listOf(sample("usd", 700.0 + i, epochMillisAt(date)))) }
         }.awaitAll()
 
         val history = store.readCurrentYear()

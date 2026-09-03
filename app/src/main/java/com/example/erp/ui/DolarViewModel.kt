@@ -68,6 +68,12 @@ open class DolarViewModel @JvmOverloads constructor(
     init {
         viewModelScope.launch {
             historyStore.ensureSeeded()
+            // Fetch historical data on first launch (if store is empty)
+            if (!historyStore.hasData()) {
+                android.util.Log.d("DolarViewModel", "Fetching historical data from API...")
+                historyStore.fetchAndPopulateHistorical()
+                android.util.Log.d("DolarViewModel", "Historical data fetched successfully")
+            }
             // Programar fetch diario a las 8 AM
             QuoteScheduler.scheduleDailyFetch(application)
             load()
@@ -136,6 +142,15 @@ open class DolarViewModel @JvmOverloads constructor(
                         loading = false,
                         error = null,
                         futureQuote = futureForSelected
+                    )
+                }
+
+                // Notify user when a new "next rate" is available
+                futureForSelected?.let { future ->
+                    com.example.erp.notification.NotificationHelper.showNextRateNotification(
+                        context = getApplication(),
+                        nextUsdRate = future.promedio,
+                        nextDate = future.fechaActualizacion
                     )
                 }
             } catch (exception: Exception) {
@@ -231,11 +246,20 @@ open class DolarViewModel @JvmOverloads constructor(
      */
     private suspend fun sampleAndPersist(quotes: List<DolarQuote>): List<RateSample> {
         val existing = historyStore.readCurrentYear()
+        // Parse "previous" date from the BCV API to sample yesterday's rate
+        val previousDateMillis = quotes.firstOrNull()?.fechaAnterior?.let { dateStr ->
+            try {
+                java.time.LocalDate.parse(dateStr, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+                    .atStartOfDay(java.time.ZoneId.systemDefault())
+                    .toInstant().toEpochMilli()
+            } catch (_: Exception) { null }
+        }
         val newSamples = RateSamplingPolicy.shouldSample(
             existing = existing,
             quotes = quotes,
             nowEpochMillis = System.currentTimeMillis(),
-            usdtSampledThisSession = usdtSampledThisSession
+            usdtSampledThisSession = usdtSampledThisSession,
+            previousDateMillis = previousDateMillis
         )
         if (newSamples.isNotEmpty()) {
             historyStore.append(newSamples)

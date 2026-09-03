@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,6 +44,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -232,64 +234,45 @@ fun DolarScreenContent(
 
         // Custom Bottom Sheet Overlay
         if (showBottomSheet) {
+            // Back button closes the sheet instead of exiting the app
+            BackHandler { showBottomSheet = false }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.4f))
-                    .fillMaxSize()
                     .clickable { showBottomSheet = false },
                 contentAlignment = Alignment.BottomCenter
             ) {
-                ThemeBottomSheetContent(
-                    currentTheme = currentTheme,
-                    currentMode = currentMode,
-                    currentDynamicColor = currentDynamicColor,
-                    currentHighPrecision = currentHighPrecision,
-                    onThemeChange = { theme ->
-                        viewModel.setTheme(theme)
-                        showBottomSheet = false
-                    },
-                    onModeChange = { mode ->
-                        viewModel.setThemeMode(mode)
-                        showBottomSheet = false
-                    },
-                    onDynamicColorChange = { enabled ->
-                        viewModel.setDynamicColorEnabled(enabled)
-                    },
-                    onHighPrecisionChange = { enabled ->
-                        viewModel.setHighPrecisionEnabled(enabled)
-                    },
-                    isDynamicColorAvailable = isDynamicColorAvailable,
-                    onDismiss = { showBottomSheet = false }
-                )
-            Box(
-                modifier = Modifier
-                    .background(MaterialTheme.colorScheme.surface)
-                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-            ) {
-                ThemeBottomSheetContent(
-                    currentTheme = currentTheme,
-                    currentMode = currentMode,
-                    currentDynamicColor = currentDynamicColor,
-                    currentHighPrecision = currentHighPrecision,
-                    onThemeChange = { theme ->
-                        viewModel.setTheme(theme)
-                        showBottomSheet = false
-                    },
-                    onModeChange = { mode ->
-                        viewModel.setThemeMode(mode)
-                        showBottomSheet = false
-                    },
-                    onDynamicColorChange = { enabled ->
-                        viewModel.setDynamicColorEnabled(enabled)
-                    },
-                    onHighPrecisionChange = { enabled ->
-                        viewModel.setHighPrecisionEnabled(enabled)
-                    },
-                    isDynamicColorAvailable = isDynamicColorAvailable,
-                    onDismiss = { showBottomSheet = false }
-                )
-            }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { /* consume clicks */ }
+                        .background(MaterialTheme.colorScheme.surface)
+                        .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                ) {
+                    ThemeBottomSheetContent(
+                        currentTheme = currentTheme,
+                        currentMode = currentMode,
+                        currentDynamicColor = currentDynamicColor,
+                        currentHighPrecision = currentHighPrecision,
+                        onThemeChange = { theme ->
+                            viewModel.setTheme(theme)
+                            // NO cerrar — dejar al usuario seguir configurando
+                        },
+                        onModeChange = { mode ->
+                            viewModel.setThemeMode(mode)
+                            // NO cerrar — dejar al usuario seguir configurando
+                        },
+                        onDynamicColorChange = { enabled ->
+                            viewModel.setDynamicColorEnabled(enabled)
+                        },
+                        onHighPrecisionChange = { enabled ->
+                            viewModel.setHighPrecisionEnabled(enabled)
+                        },
+                        isDynamicColorAvailable = isDynamicColorAvailable,
+                        onDismiss = { showBottomSheet = false }
+                    )
+                }
             }
         }
     }
@@ -842,7 +825,27 @@ private fun CalendarLookupSection(
     viewModel: DolarViewModel
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
-    val datePickerState = rememberDatePickerState()
+
+    // Limite: midnight UTC de hoy
+    val todayUtcMillis = remember {
+        java.time.LocalDate.now().atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+    }
+
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = todayUtcMillis,
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                // Only allow dates within the last 3 months
+                val threeMonthsAgo = java.time.LocalDate.now().minusMonths(3)
+                    .atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+                return utcTimeMillis in threeMonthsAgo..todayUtcMillis
+            }
+            override fun isSelectableYear(year: Int): Boolean {
+                return year <= java.time.Year.now().value
+            }
+        }
+    )
+    var calendarError by remember { mutableStateOf(false) }
     val priceFmt = remember { NumberFormat.getNumberInstance(Locale.getDefault()).apply {
         minimumFractionDigits = 2
         maximumFractionDigits = 2
@@ -869,7 +872,7 @@ private fun CalendarLookupSection(
             )
             Spacer(Modifier.height(12.dp))
 
-            Button(onClick = { showDatePicker = true }) {
+            Button(onClick = { calendarError = false; showDatePicker = true }) {
                 Icon(
                     imageVector = Icons.Rounded.CalendarMonth,
                     contentDescription = null,
@@ -877,6 +880,16 @@ private fun CalendarLookupSection(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text("Elegir fecha")
+            }
+
+            // Error: fecha futura
+            if (calendarError) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "Solo se pueden consultar fechas anteriores o iguales a hoy",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
             }
 
             // Resultado de la busqueda
@@ -960,9 +973,14 @@ private fun CalendarLookupSection(
             confirmButton = {
                 Button(onClick = {
                     datePickerState.selectedDateMillis?.let { millis ->
-                        viewModel.lookupDateRate(millis)
+                        if (millis > todayUtcMillis) {
+                            calendarError = true
+                        } else {
+                            calendarError = false
+                            viewModel.lookupDateRate(millis)
+                            showDatePicker = false
+                        }
                     }
-                    showDatePicker = false
                 }) {
                     Text("Ver tasa")
                 }
@@ -970,6 +988,7 @@ private fun CalendarLookupSection(
             dismissButton = {
                 Button(onClick = {
                     showDatePicker = false
+                    calendarError = false
                     viewModel.clearDateRate()
                 }) {
                     Text("Cancelar")
