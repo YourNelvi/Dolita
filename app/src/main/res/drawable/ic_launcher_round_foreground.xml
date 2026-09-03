@@ -1,15 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Modern stylized dollar sign for Dolita (round) -->
-    <group
-        android:translateX="27"
-        android:translateY="18">
-        <!-- Dollar sign body - clean modern design -->
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M27,4 C21.5,4 17,8.5 17,14 L17,18 L54,18 C59.5,18 64,22.5 64,28 C64,33.5 59.5,38 54,38 L21,38 L21,44 C21,49.5 25.5,54 31,54 C36.5,54 41,49.5 41,44 L41,40 L57,40 C62.5,40 67,44.5 67,50 C67,55.5 62.5,60 57,60 L21,60 L21,68 C21,73.5 25.5,78 31,78 C36.5,78 41,73.5 41,68 L41,64 L57,64 C62.5,64 67,68.5 67,74 C67,79.5 62.5,84 57,84 C51.5,84 47,79.5 47,74 L47,60 L31,60 C25.5,60 21,55.5 21,50 C21,44.5 25.5,40 31,40 L47,40 L47,34 C47,28.5 42.5,24 37,24 C31.5,24 27,28.5 27,34 L27,38 L11,38 C5.5,38 1,33.5 1,28 C1,22.5 5.5,18 11,18 L47,18 L47,14 C47,8.5 42.5,4 37,4 Z" />
-    </group>
+    <!-- Very simple dollar sign -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,16 L54,92"
+        android:strokeWidth="8"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M36,32 C36,24 44,20 54,20 C64,20 72,24 72,32 C72,40 64,44 54,44 L36,44 L36,32 Z"
+        android:strokeWidth="6"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M72,64 C72,72 64,76 54,76 C44,76 36,72 36,64 C36,56 44,52 54,52 L72,52 L72,64 Z"
+        android:strokeWidth="6"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
 </vector>

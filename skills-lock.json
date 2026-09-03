@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "openspec-proposal-creation": {
+      "source": "forztf/open-skilled-sdd",
+      "sourceType": "github",
+      "skillPath": "skills/openspec-proposal-creation/SKILL.md",
+      "computedHash": "9f62cab977000abb6cc5f8cd5a1ba950e694183b2db0acb6fc3eaebd78229016"
+    },
+    "planning-and-task-breakdown": {
+      "source": "addyosmani/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/planning-and-task-breakdown/SKILL.md",
+      "computedHash": "f6c2cc012101225c58e5886e847342d1efaf0336a8e150b833d617fdf092952c"
+    }
+  }
+}
