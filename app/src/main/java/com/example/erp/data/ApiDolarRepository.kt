@@ -10,14 +10,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
 import java.time.OffsetDateTime
-import java.util.concurrent.TimeUnit
 
 private const val TAG = "DolarAPI"
-
-private val client = OkHttpClient.Builder()
-    .connectTimeout(15, TimeUnit.SECONDS)
-    .readTimeout(15, TimeUnit.SECONDS)
-    .build()
 
 class ApiDolarRepository : DolarRepository {
 
@@ -37,7 +31,7 @@ class ApiDolarRepository : DolarRepository {
 
     private fun fetchBcv(): List<DolarQuote> {
         Log.d(TAG, "Requesting $BCV_URL")
-        return client.newCall(buildGet(BCV_URL)).execute().use { response ->
+        return sharedHttpClient.newCall(buildGet(BCV_URL)).execute().use { response ->
             val code = response.code
             Log.d(TAG, "HTTP $code")
             val body = response.body?.string().orEmpty()
@@ -55,7 +49,7 @@ class ApiDolarRepository : DolarRepository {
             .header("Content-Type", "application/json")
             .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36")
             .build()
-        return client.newCall(request).execute().use { response ->
+        return sharedHttpClient.newCall(request).execute().use { response ->
             val code = response.code
             Log.d(TAG, "Binance HTTP $code")
             val body = response.body?.string().orEmpty()

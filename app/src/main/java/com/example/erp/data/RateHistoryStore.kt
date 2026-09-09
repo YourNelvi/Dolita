@@ -14,14 +14,14 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.concurrent.TimeUnit
 
 /**
  * Persists [RateSample]s into per-year JSON files (`rates-YYYY.json`).
  * Appends are serialized and written atomically (tmp file + rename).
  */
 interface RateHistoryStore {
-    suspend fun append(samples: List<RateSample>)
+    /** Appends samples and returns the merged list for the current year. */
+    suspend fun append(samples: List<RateSample>): List<RateSample>
     /** Samples of the current calendar year sorted by timestamp; corrupt/absent file -> emptyList. */
     suspend fun readCurrentYear(): List<RateSample>
     /** Ensures the current-year file exists and is seeded with historical data if empty. */
@@ -43,9 +43,9 @@ class FileHistoryStore(
 
     private val mutex = Mutex()
 
-    override suspend fun append(samples: List<RateSample>) {
-        if (samples.isEmpty()) return
-        mutex.withLock {
+    override suspend fun append(samples: List<RateSample>): List<RateSample> {
+        if (samples.isEmpty()) return readCurrentYear()
+        return mutex.withLock {
             withContext(Dispatchers.IO) {
                 samples.groupBy { rateYearName(it.timestampEpochMillis, zoneId) }
                     .forEach { (fileName, yearSamples) ->
@@ -61,6 +61,8 @@ class FileHistoryStore(
                             .sortedBy { it.timestampEpochMillis }
                         writeAtomically(target, RateHistoryCodec.encode(merged))
                     }
+                readSamples(File(dir, rateYearName(System.currentTimeMillis(), zoneId)))
+                    .sortedBy { it.timestampEpochMillis }
             }
         }
     }
@@ -89,9 +91,10 @@ class FileHistoryStore(
     }
 
     override suspend fun fetchAndPopulateHistorical() {
-        // Fetch from ve.dolarapi.com and populate
         val historicalData = try {
-            fetchHistoricalFromApi()
+            withContext(Dispatchers.IO) {
+                fetchHistoricalFromApi()
+            }
         } catch (e: Exception) {
             android.util.Log.w("RateHistoryStore", "Historical fetch failed: ${e.message}")
             return
@@ -124,17 +127,14 @@ class FileHistoryStore(
      */
     private fun fetchHistoricalFromApi(): List<RateSample> {
         val url = "https://ve.dolarapi.com/v1/historicos/dolares/oficial"
-        val client = okhttp3.OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .build()
 
         val request = okhttp3.Request.Builder()
             .url(url)
             .header("Accept", "application/json")
             .build()
 
-        val response = client.newCall(request).execute()
+        android.util.Log.d("RateHistoryStore", "Fetching historical from: $url")
+        val response = sharedHttpClient.newCall(request).execute()
         val body = response.body?.string().orEmpty()
 
         if (response.code != 200) {

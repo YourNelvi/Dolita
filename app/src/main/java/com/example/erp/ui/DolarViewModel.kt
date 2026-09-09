@@ -68,13 +68,9 @@ open class DolarViewModel @JvmOverloads constructor(
     init {
         viewModelScope.launch {
             historyStore.ensureSeeded()
-            // Fetch historical data on first launch (if store is empty)
             if (!historyStore.hasData()) {
-                android.util.Log.d("DolarViewModel", "Fetching historical data from API...")
                 historyStore.fetchAndPopulateHistorical()
-                android.util.Log.d("DolarViewModel", "Historical data fetched successfully")
             }
-            // Programar fetch diario a las 8 AM
             QuoteScheduler.scheduleDailyFetch(application)
             load()
         }
@@ -262,9 +258,9 @@ open class DolarViewModel @JvmOverloads constructor(
             previousDateMillis = previousDateMillis
         )
         if (newSamples.isNotEmpty()) {
-            historyStore.append(newSamples)
             if (newSamples.any { it.fuente == "usdt" }) usdtSampledThisSession = true
+            return historyStore.append(newSamples)
         }
-        return historyStore.readCurrentYear()
+        return existing
     }
 }

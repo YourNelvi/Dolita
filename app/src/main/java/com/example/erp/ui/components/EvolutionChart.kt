@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -84,6 +85,15 @@ fun EvolutionChart(
     val density = LocalDensity.current
     val textSizePx = with(density) { 12.sp.toPx() }
     val smallTextSizePx = with(density) { 10.sp.toPx() }
+
+    val labelPaint = remember(onSurface) {
+        android.graphics.Paint().apply {
+            color = onSurface.toArgb()
+            textSize = smallTextSizePx
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+    }
 
     Box(modifier = modifier.fillMaxWidth()) {
         Canvas(
@@ -201,12 +211,6 @@ fun EvolutionChart(
             }
 
             // Etiquetas de eje X (primeros, ultimo, y seleccionado)
-            val labelPaint = android.graphics.Paint().apply {
-                color = onSurface.hashCode()
-                textSize = smallTextSizePx
-                textAlign = android.graphics.Paint.Align.CENTER
-                isAntiAlias = true
-            }
             // Primera fecha
             drawContext.canvas.nativeCanvas.drawText(
                 dayFormat.format(Instant.ofEpochMilli(sorted.first().timestampEpochMillis)),

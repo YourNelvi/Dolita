@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.erp.ui.DolarScreen
 import com.example.erp.ui.DolarViewModel
+import com.example.erp.ui.DolarViewModelFactory
 import com.example.erp.data.ThemeMode
 import com.example.erp.ui.theme.AppTheme
 import com.example.erp.ui.theme.ERPTheme
@@ -18,7 +19,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            val viewModel: DolarViewModel = viewModel()
+            val viewModel: DolarViewModel = viewModel(
+                factory = DolarViewModelFactory(application)
+            )
             val theme by viewModel.theme.collectAsState(initial = AppTheme.DOLAR_VERDE)
             val themeMode by viewModel.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
             val dynamicColor by viewModel.dynamicColorEnabled.collectAsState(initial = true)

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -109,23 +110,10 @@ fun ThemeBottomSheetContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                // Simple toggle button
-                Box(
-                    modifier = Modifier
-                        .size(48.dp, 28.dp)
-                        .background(
-                            if (currentDynamicColor) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                            RoundedCornerShape(14.dp)
-                        )
-                        .clickable { onDynamicColorChange(!currentDynamicColor) }
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .background(MaterialTheme.colorScheme.onPrimary, CircleShape)
-                            .padding(start = if (currentDynamicColor) 20.dp else 0.dp)
-                    )
-                }
+                Switch(
+                    checked = currentDynamicColor,
+                    onCheckedChange = { onDynamicColorChange(!currentDynamicColor) }
+                )
             }
             androidx.compose.material3.Divider(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
@@ -150,22 +138,10 @@ fun ThemeBottomSheetContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Box(
-                modifier = Modifier
-                    .size(48.dp, 28.dp)
-                    .background(
-                        if (currentHighPrecision) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                        RoundedCornerShape(14.dp)
-                    )
-                    .clickable { onHighPrecisionChange(!currentHighPrecision) }
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .background(MaterialTheme.colorScheme.onPrimary, CircleShape)
-                        .padding(start = if (currentHighPrecision) 20.dp else 0.dp)
-                )
-            }
+            Switch(
+                checked = currentHighPrecision,
+                onCheckedChange = { onHighPrecisionChange(!currentHighPrecision) }
+            )
         }
         androidx.compose.material3.Divider(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
