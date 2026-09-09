@@ -6,21 +6,24 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,14 +31,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.erp.data.ThemeMode
 import com.example.erp.ui.theme.AppTheme
-import com.example.erp.ui.theme.isDarkTheme
-import kotlinx.coroutines.flow.MutableStateFlow
 
 @ExperimentalMaterial3Api
 @Composable
@@ -51,54 +54,70 @@ fun ThemeBottomSheetContent(
     isDynamicColorAvailable: Boolean,
     onDismiss: () -> Unit
 ) {
+    val configuration = LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp
+
+    val horizontalPadding = if (screenWidthDp < 360) 16.dp else 24.dp
+
+    var showThemeDialog by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(24.dp)
+            .padding(horizontal = horizontalPadding)
+            .padding(top = 16.dp, bottom = 24.dp)
     ) {
         // Handle bar + Close button
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .height(4.dp)
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), RoundedCornerShape(2.dp))
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
             )
+            Spacer(modifier = Modifier.width(12.dp))
             Box(
                 modifier = Modifier
-                    .padding(start = 16.dp)
-                    .size(32.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .clickable { onDismiss() },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "✕",
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 16.sp
                 )
             }
         }
 
-        // Title
+        Spacer(modifier = Modifier.height(12.dp))
+
         Text(
             text = "Tema y apariencia",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold
         )
 
-        // Dynamic Color Toggle (Android 12+)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Dynamic Color Toggle
         if (isDynamicColorAvailable) {
             Row(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "Color dinámico (Material You)",
                         style = MaterialTheme.typography.titleMedium,
@@ -122,11 +141,13 @@ fun ThemeBottomSheetContent(
 
         // High Precision Toggle
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Alta precisión",
                     style = MaterialTheme.typography.titleMedium,
@@ -147,135 +168,198 @@ fun ThemeBottomSheetContent(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
         )
 
-        // Theme Mode Selector (System / Light / Dark) - Simple buttons
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Theme Mode Selector
         Text(
             text = "Modo de tema",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(bottom = 8.dp)
         )
         Row(
-            horizontalArrangement = Arrangement.SpaceEvenly
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ThemeMode.values().forEach { mode ->
+            ThemeMode.entries.forEach { mode ->
                 val isSelected = currentMode == mode
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
                         .background(
-                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(16.dp)
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant
                         )
-                        .padding(16.dp)
                         .clickable { onModeChange(mode) }
+                        .padding(vertical = 12.dp, horizontal = 8.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = mode.displayName,
                         style = MaterialTheme.typography.labelLarge,
-                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1
                     )
                 }
             }
         }
-        androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(16.dp))
+
+        Spacer(modifier = Modifier.height(12.dp))
         androidx.compose.material3.Divider(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
         )
 
-        // Theme Selector with Color Swatches
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Theme Selector — button that opens a dialog
         Text(
             text = "Tema de color",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(bottom = 8.dp)
         )
-        LazyColumn(
+
+        val lightPrimary = Color(currentTheme.lightPrimary)
+        val darkPrimary = Color(currentTheme.darkPrimary)
+
+        // Current theme preview button
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(320.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                .clickable { showThemeDialog = true }
+                .padding(16.dp)
         ) {
-            items(AppTheme.values()) { theme ->
-                ThemeChip(
-                    theme = theme,
-                    isSelected = currentTheme == theme,
-                    isEnabled = true,
-                    onClick = { onThemeChange(theme) }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier.size(56.dp, 28.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .background(lightPrimary, CircleShape)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .background(darkPrimary, CircleShape)
+                    )
+                }
+                Text(
+                    text = currentTheme.displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = "Cambiar",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
+    }
+
+    // Theme Selection Dialog
+    if (showThemeDialog) {
+        ThemeSelectionDialog(
+            currentTheme = currentTheme,
+            onThemeSelected = {
+                onThemeChange(it)
+                showThemeDialog = false
+            },
+            onDismiss = { showThemeDialog = false }
+        )
     }
 }
 
 @Composable
-private fun ThemeChip(
-    theme: AppTheme,
-    isSelected: Boolean,
-    isEnabled: Boolean,
-    onClick: () -> Unit
+private fun ThemeSelectionDialog(
+    currentTheme: AppTheme,
+    onThemeSelected: (AppTheme) -> Unit,
+    onDismiss: () -> Unit
 ) {
-    // Get theme colors for preview
-    val lightPrimary = androidx.compose.ui.graphics.Color(theme.lightPrimary)
-    val darkPrimary = androidx.compose.ui.graphics.Color(theme.darkPrimary)
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                shape = RoundedCornerShape(20.dp)
-            )
-            .fillMaxWidth()
-            .clickable(enabled = isEnabled, onClick = onClick),
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Color preview circles
-            Row(
-                modifier = Modifier.size(56.dp, 28.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .background(lightPrimary, CircleShape)
-                )
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .background(androidx.compose.ui.graphics.Color(theme.darkPrimary), CircleShape)
-                )
-            }
-
-            // Theme name
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
             Text(
-                text = theme.displayName,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium,
-                color = if (isEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                text = "Seleccionar tema",
+                fontWeight = FontWeight.SemiBold
             )
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                AppTheme.entries.forEach { theme ->
+                    val isSelected = currentTheme == theme
+                    val lightPrimary = Color(theme.lightPrimary)
+                    val darkPrimary = Color(theme.darkPrimary)
 
-            androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            )
+                            .clickable { onThemeSelected(theme) }
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Color preview circles
+                        Row(
+                            modifier = Modifier.size(56.dp, 28.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .background(lightPrimary, CircleShape)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .background(darkPrimary, CircleShape)
+                            )
+                        }
 
-            // Checkmark
-            if (isSelected) {
-                androidx.compose.material3.Icon(
-                    imageVector = androidx.compose.material.icons.Icons.Filled.Check,
-                    contentDescription = "Seleccionado",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
+                        Text(
+                            text = theme.displayName,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = "Seleccionado",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cerrar")
             }
         }
-    }
+    )
 }
 
-// Display names for ThemeMode
 private val ThemeMode.displayName: String
     get() = when (this) {
         ThemeMode.SYSTEM -> "Sistema"
