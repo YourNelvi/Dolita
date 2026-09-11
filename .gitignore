@@ -15,3 +15,8 @@
 local.properties
 # Local AI runtime state
 .atl/
+# Release keystore (never commit)
+*.jks
+*.keystore
+# Built APKs
+*.apk
