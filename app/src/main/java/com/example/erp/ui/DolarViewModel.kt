@@ -90,6 +90,10 @@ open class DolarViewModel @JvmOverloads constructor(
                 var futureUsd: DolarQuote? = null
                 var futureEur: DolarQuote? = null
 
+                // Para buscar la tasa de ayer cuando la API devuelve fecha futura
+                val yesterday = today.minusDays(1)
+                val historySamples = historyStore.readCurrentYear()
+
                 rawQuotes.forEach { quote ->
                     val quoteDate = try {
                         java.time.LocalDate.parse(quote.fechaActualizacion)
@@ -102,12 +106,19 @@ open class DolarViewModel @JvmOverloads constructor(
                             "eur" -> futureEur = quote
                         }
                         // Construir la tasa de HOY usando el campo "anterior" del API
+                        // El "anterior" del API es la tasa de HOY; buscar la de AYER en el historico
                         quote.anterior?.let { anterior ->
+                            val yesterdayRate = historySamples
+                                .filter { it.fuente == quote.fuente }
+                                .lastOrNull {
+                                    java.time.Instant.ofEpochMilli(it.timestampEpochMillis)
+                                        .atZone(zoneId).toLocalDate() == yesterday
+                                }
                             todayQuotes.add(
                                 quote.copy(
                                     promedio = anterior,
                                     fechaActualizacion = today.toString(),
-                                    anterior = null,
+                                    anterior = yesterdayRate?.precio,
                                     variacion = null
                                 )
                             )
