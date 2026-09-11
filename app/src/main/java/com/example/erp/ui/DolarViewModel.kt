@@ -68,10 +68,11 @@ open class DolarViewModel @JvmOverloads constructor(
     init {
         viewModelScope.launch {
             historyStore.ensureSeeded()
-            if (!historyStore.hasData()) {
-                historyStore.fetchAndPopulateHistorical()
-            }
+            // Always try to fetch historical data - merge logic handles deduplication.
+            // This ensures EUR data is fetched even when USD data already exists.
+            historyStore.fetchAndPopulateHistorical()
             QuoteScheduler.scheduleDailyFetch(application)
+            QuoteScheduler.scheduleHourlyUsdtFetch(application)
             load()
         }
     }

@@ -93,7 +93,7 @@ class FileHistoryStore(
     override suspend fun fetchAndPopulateHistorical() {
         val historicalData = try {
             withContext(Dispatchers.IO) {
-                fetchHistoricalFromApi()
+                fetchHistoricalFromApi() + fetchHistoricalEuroFromApi()
             }
         } catch (e: Exception) {
             android.util.Log.w("RateHistoryStore", "Historical fetch failed: ${e.message}")
@@ -170,6 +170,57 @@ class FileHistoryStore(
         return samples
     }
 
+    /**
+     * Fetches historical EUR rates from ve.dolarapi.com API.
+     * Returns list of RateSample with real BCV Euro data.
+     */
+    private fun fetchHistoricalEuroFromApi(): List<RateSample> {
+        val url = "https://ve.dolarapi.com/v1/historicos/euros/oficial"
+
+        val request = okhttp3.Request.Builder()
+            .url(url)
+            .header("Accept", "application/json")
+            .build()
+
+        android.util.Log.d("RateHistoryStore", "Fetching EUR historical from: $url")
+        val response = sharedHttpClient.newCall(request).execute()
+        val body = response.body?.string().orEmpty()
+
+        if (response.code != 200) {
+            android.util.Log.w("RateHistoryStore", "EUR historical fetch failed: HTTP ${response.code}")
+            return emptyList()
+        }
+
+        val samples = mutableListOf<RateSample>()
+        val root = org.json.JSONArray(body)
+
+        for (i in 0 until root.length()) {
+            val item = root.optJSONObject(i) ?: continue
+            val fecha = item.optString("fecha", "")
+            val promedio = item.optDouble("promedio", 0.0)
+
+            if (fecha.isBlank() || promedio <= 0.0) continue
+
+            try {
+                val date = java.time.LocalDate.parse(fecha, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+                val timestamp = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
+
+                samples.add(RateSample(
+                    fuente = "eur",
+                    nombre = "Euro (BCV)",
+                    precio = promedio,
+                    timestampEpochMillis = timestamp,
+                    anterior = null,
+                    variacion = null
+                ))
+            } catch (e: Exception) {
+                // Skip invalid dates
+            }
+        }
+        android.util.Log.d("RateHistoryStore", "EUR historical: ${samples.size} samples fetched")
+        return samples
+    }
+
     private fun readSamples(file: File): List<RateSample> {
         if (!file.exists()) return emptyList()
         return try {
@@ -214,7 +265,7 @@ fun rateYearName(epochMillis: Long, zoneId: ZoneId = ZoneId.systemDefault()): St
 /**
  * Decides which quotes deserve a new sample for this load.
  * BCV (usd, eur) dedupes to one sample per fuente per calendar day;
- * USDT dedupes to one sample per app-open window (session flag).
+ * USDT dedupes to one sample per hour (P2P rates change frequently).
  */
 object RateSamplingPolicy {
 
@@ -228,6 +279,7 @@ object RateSamplingPolicy {
     ): List<RateSample> {
         val newSamples = mutableListOf<RateSample>()
         val today = localDateOf(nowEpochMillis, zoneId)
+        val nowHour = Instant.ofEpochMilli(nowEpochMillis).atZone(zoneId).toLocalDateTime().hour
 
         quotes.forEach { quote ->
             when (quote.fuente) {
@@ -269,15 +321,26 @@ object RateSamplingPolicy {
                         }
                     }
                 }
-                "usdt" -> if (!usdtSampledThisSession) {
-                    newSamples.add(
-                        RateSample(
-                            fuente = quote.fuente,
-                            nombre = quote.nombre,
-                            precio = quote.promedio,
-                            timestampEpochMillis = nowEpochMillis
+                "usdt" -> {
+                    // Sample USDT once per hour (P2P rates change frequently)
+                    val alreadySampledThisHour = existing.any {
+                        it.fuente == "usdt" &&
+                        Instant.ofEpochMilli(it.timestampEpochMillis).atZone(zoneId).toLocalDateTime().hour == nowHour &&
+                        localDateOf(it.timestampEpochMillis, zoneId) == today
+                    } || newSamples.any {
+                        it.fuente == "usdt" &&
+                        Instant.ofEpochMilli(it.timestampEpochMillis).atZone(zoneId).toLocalDateTime().hour == nowHour
+                    }
+                    if (!alreadySampledThisHour) {
+                        newSamples.add(
+                            RateSample(
+                                fuente = quote.fuente,
+                                nombre = quote.nombre,
+                                precio = quote.promedio,
+                                timestampEpochMillis = nowEpochMillis
+                            )
                         )
-                    )
+                    }
                 }
             }
         }

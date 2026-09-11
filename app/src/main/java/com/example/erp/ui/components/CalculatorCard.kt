@@ -14,6 +14,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -46,6 +47,13 @@ fun CalculatorCard(quote: DolarQuote?) {
     // Estado: solo dígitos puros (ej: "1234" = 1234,00)
     var vesDigits by remember { mutableStateOf("") }
     var divDigits by remember { mutableStateOf("") }
+
+    // Limpiar calculadora al cambiar de fuente
+    LaunchedEffect(quote.fuente) {
+        vesDigits = ""
+        divDigits = ""
+        lastEdited = "ves"
+    }
 
     // Convierte dígitos (estilo calculadora clásico) a BigDecimal: "300" -> 3.00
     fun parseDigits(digits: String): BigDecimal? {

@@ -8,7 +8,8 @@ import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
 object QuoteScheduler {
-    private const val WORK_NAME = "daily_quotes_fetch"
+    private const val DAILY_WORK_NAME = "daily_quotes_fetch"
+    private const val USDT_WORK_NAME = "hourly_usdt_fetch"
     private const val FETCH_HOUR = 8 // 8 AM
     private const val FLEX_WINDOW_HOURS = 1L // Ventana de 1 hora (8-9 AM)
 
@@ -19,21 +20,40 @@ object QuoteScheduler {
             FLEX_WINDOW_HOURS, TimeUnit.HOURS // Ventana flexible
         )
             .setInitialDelay(calculateInitialDelay(), TimeUnit.MILLISECONDS)
-            .addTag(WORK_NAME)
+            .addTag(DAILY_WORK_NAME)
             .build()
 
         WorkManager.getInstance(context)
             .enqueueUniquePeriodicWork(
-                WORK_NAME,
+                DAILY_WORK_NAME,
                 ExistingPeriodicWorkPolicy.KEEP,
                 workRequest
             )
         Log.d("QuoteScheduler", "Scheduled daily fetch for ~$FETCH_HOUR:00 AM")
     }
 
+    fun scheduleHourlyUsdtFetch(context: Context) {
+        val workRequest = PeriodicWorkRequest.Builder(
+            FetchUsdtWorker::class.java,
+            1L, TimeUnit.HOURS, // Every hour
+            15L, TimeUnit.MINUTES // Flex window of 15 min
+        )
+            .addTag(USDT_WORK_NAME)
+            .build()
+
+        WorkManager.getInstance(context)
+            .enqueueUniquePeriodicWork(
+                USDT_WORK_NAME,
+                ExistingPeriodicWorkPolicy.KEEP,
+                workRequest
+            )
+        Log.d("QuoteScheduler", "Scheduled hourly USDT fetch")
+    }
+
     fun cancelScheduledFetch(context: Context) {
-        WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
-        Log.d("QuoteScheduler", "Cancelled daily fetch")
+        WorkManager.getInstance(context).cancelUniqueWork(DAILY_WORK_NAME)
+        WorkManager.getInstance(context).cancelUniqueWork(USDT_WORK_NAME)
+        Log.d("QuoteScheduler", "Cancelled all scheduled fetches")
     }
 
     private fun calculateInitialDelay(): Long {
