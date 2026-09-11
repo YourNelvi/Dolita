@@ -39,6 +39,8 @@ fun EvolutionChart(
     samples: List<RateSample>,
     lineColor: Color = MaterialTheme.colorScheme.primary,
     modifier: Modifier = Modifier,
+    maxPoints: Int = 15,
+    showHours: Boolean = false,
     zoneId: ZoneId = ZoneId.systemDefault(),
     locale: Locale = Locale.getDefault()
 ) {
@@ -56,9 +58,8 @@ fun EvolutionChart(
         return
     }
 
-    // Tomar ultimos 15 dias
     val sorted = remember(samples) {
-        samples.sortedBy { it.timestampEpochMillis }.takeLast(15)
+        samples.sortedBy { it.timestampEpochMillis }.takeLast(maxPoints)
     }
     val priceFormat = remember(locale) {
         NumberFormat.getNumberInstance(locale).apply {
@@ -66,11 +67,11 @@ fun EvolutionChart(
             maximumFractionDigits = 2
         }
     }
-    val dayFormat = remember(zoneId) {
-        DateTimeFormatter.ofPattern("dd/MM").withZone(zoneId)
+    val dayFormat = remember(zoneId, showHours) {
+        DateTimeFormatter.ofPattern(if (showHours) "dd/MM HH:mm" else "dd/MM").withZone(zoneId)
     }
-    val fullDateFormat = remember(zoneId) {
-        DateTimeFormatter.ofPattern("dd/MM/yyyy").withZone(zoneId)
+    val fullDateFormat = remember(zoneId, showHours) {
+        DateTimeFormatter.ofPattern(if (showHours) "dd/MM HH:mm" else "dd/MM/yyyy").withZone(zoneId)
     }
 
     var selectedIndex by remember { mutableStateOf(-1) }

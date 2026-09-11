@@ -601,6 +601,17 @@ private fun CasaChips(
 
 @Composable
 private fun HistoricoChartCard(samples: List<com.example.erp.data.RateSample>) {
+    // Detectar si los datos son por hora (USDT siempre es muestreo horario)
+    val isHourly = remember(samples) {
+        samples.any { it.fuente == "usdt" }
+    }
+
+    val maxPoints = if (isHourly) 48 else 15
+    val title = if (isHourly)
+        "Últimas 48 muestras horarias (toca un punto para ver precio)"
+    else
+        "Últimos 15 días (toca un punto para ver precio)"
+
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
@@ -610,13 +621,15 @@ private fun HistoricoChartCard(samples: List<com.example.erp.data.RateSample>) {
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(
-                text = "Ultimos 15 dias (toca un punto para ver precio)",
+                text = title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(Modifier.height(12.dp))
             EvolutionChart(
                 samples = samples,
+                maxPoints = maxPoints,
+                showHours = isHourly,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(220.dp)
