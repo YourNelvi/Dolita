@@ -133,6 +133,7 @@ fun DolarScreen(
         uiState = uiState,
         onSelectCasa = viewModel::select,
         onRefresh = viewModel::load,
+        onToggleFutureRate = viewModel::toggleUseFutureRate,
         viewModel = viewModel
     )
 }
@@ -143,6 +144,7 @@ fun DolarScreenContent(
     uiState: DolarUiState,
     onSelectCasa: (String) -> Unit,
     onRefresh: () -> Unit,
+    onToggleFutureRate: () -> Unit,
     viewModel: DolarViewModel
 ) {
     var showBottomSheet by remember { mutableStateOf(false) }
@@ -219,6 +221,7 @@ fun DolarScreenContent(
                 DolarContent(
                     uiState = uiState,
                     onSelectCasa = onSelectCasa,
+                    onToggleFutureRate = onToggleFutureRate,
                     viewModel = viewModel,
                     highPrecision = currentHighPrecision,
                     modifier = contentModifier
@@ -318,6 +321,7 @@ private fun ErrorState(
 private fun DolarContent(
     uiState: DolarUiState,
     onSelectCasa: (String) -> Unit,
+    onToggleFutureRate: () -> Unit,
     viewModel: DolarViewModel,
     highPrecision: Boolean,
     modifier: Modifier = Modifier
@@ -336,7 +340,14 @@ private fun DolarContent(
 
         // Proxima tasa (si el API ya publico la de manana)
         uiState.futureQuote?.let { future ->
-            item { ProximaTasaCard(future = future, highPrecision = highPrecision) }
+            item {
+                ProximaTasaCard(
+                    future = future,
+                    highPrecision = highPrecision,
+                    isActive = uiState.useFutureRate,
+                    onClick = onToggleFutureRate
+                )
+            }
         }
 
         item {
@@ -349,7 +360,22 @@ private fun DolarContent(
 
         item { SectionHeader("Calculadora") }
         item {
-            CalculatorCard(quote = selected)
+            val future = uiState.futureQuote
+            val calcQuote = if (uiState.useFutureRate && future != null && selected != null) {
+                // Crear un DolarQuote sintético con la tasa futura para la calculadora
+                val sel = selected!!
+                DolarQuote(
+                    fuente = sel.fuente,
+                    nombre = sel.nombre + " (futuro)",
+                    promedio = future.promedio,
+                    anterior = sel.anterior,
+                    variacion = sel.variacion,
+                    fechaActualizacion = future.fechaActualizacion
+                )
+            } else {
+                selected
+            }
+            calcQuote?.let { CalculatorCard(quote = it) }
         }
 
         item { SectionHeader("Histórico") }
@@ -526,17 +552,34 @@ private fun FeaturedStatColored(label: String, value: String, color: Color) {
 }
 
 @Composable
-private fun ProximaTasaCard(future: DolarQuote, highPrecision: Boolean = false) {
+private fun ProximaTasaCard(
+    future: DolarQuote,
+    highPrecision: Boolean = false,
+    isActive: Boolean = false,
+    onClick: () -> Unit = {}
+) {
     val fracDigits = if (highPrecision) 4 else 2
     val fmt = NumberFormat.getNumberInstance(Locale.getDefault()).apply {
         minimumFractionDigits = fracDigits
         maximumFractionDigits = fracDigits
     }
+    val containerColor = if (isActive)
+        MaterialTheme.colorScheme.tertiaryContainer
+    else
+        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+    val borderColor = if (isActive)
+        MaterialTheme.colorScheme.tertiary
+    else
+        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f)
+
     Card(
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = androidx.compose.foundation.BorderStroke(
+            width = if (isActive) 2.dp else 0.dp,
+            color = borderColor
         ),
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -548,7 +591,7 @@ private fun ProximaTasaCard(future: DolarQuote, highPrecision: Boolean = false) 
         ) {
             Column {
                 Text(
-                    text = "Proxima tasa",
+                    text = if (isActive) "Usando tasa futura" else "Proxima tasa",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.tertiary
@@ -1064,6 +1107,7 @@ private fun DolarScreenPreview() {
             ),
             onSelectCasa = {},
             onRefresh = {},
+            onToggleFutureRate = {},
             viewModel = fakeViewModel
         )
     }
@@ -1084,6 +1128,7 @@ private fun DolarScreenSinDatosPreview() {
             ),
             onSelectCasa = {},
             onRefresh = {},
+            onToggleFutureRate = {},
             viewModel = fakeViewModel
         )
     }

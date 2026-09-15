@@ -35,7 +35,8 @@ data class DolarUiState(
     val selectedDateRate: RateSample? = null,
     val selectedDateLabel: String? = null,
     val dateLookupDone: Boolean = false,
-    val futureQuote: DolarQuote? = null
+    val futureQuote: DolarQuote? = null,
+    val useFutureRate: Boolean = false
 )
 
 /**
@@ -186,6 +187,10 @@ open class DolarViewModel @JvmOverloads constructor(
             }
             _uiState.update { it.copy(historial = historial, futureQuote = futureForSelected) }
         }
+    }
+
+    fun toggleUseFutureRate() {
+        _uiState.update { it.copy(useFutureRate = !it.useFutureRate) }
     }
 
     fun lookupDateRate(dateMillis: Long) {
