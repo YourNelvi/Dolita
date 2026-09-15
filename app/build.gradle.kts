@@ -14,8 +14,8 @@ android {
         applicationId = "com.example.erp"
         minSdk = 30
         targetSdk = 37
-        versionCode = 1016000
-        versionName = "1.16.0"
+        versionCode = 1016100
+        versionName = "1.16.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -31,13 +31,9 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = false
+            isShrinkResources = false
             signingConfig = signingConfigs.getByName("release")
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
         }
     }
     compileOptions {

@@ -22,3 +22,15 @@
 # ViewModel
 -keep class * extends androidx.lifecycle.ViewModel
 -keep class * extends androidx.lifecycle.AndroidViewModel
+
+# WorkManager (Room-based WorkDatabase needs reflection)
+-keep class * extends androidx.work.Worker
+-keep class * extends androidx.work.ListenableWorker
+-keep class androidx.work.impl.** { *; }
+-keep class androidx.work.WorkManagerInitializer { *; }
+-dontwarn androidx.work.**
+
+# Room (used by WorkManager internally)
+-keep class * extends androidx.room.RoomDatabase
+-keep @androidx.room.Entity class *
+-dontwarn androidx.room.**
