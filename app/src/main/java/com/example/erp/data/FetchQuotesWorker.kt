@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.erp.notification.NotificationHelper
+import com.example.erp.widget.RateWidgetProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -32,6 +33,9 @@ class FetchQuotesWorker(
                         eurRate = eurQuote?.promedio
                     )
                 }
+
+                // Update home screen widget
+                RateWidgetProvider.updateAllWidgets(applicationContext)
 
                 // Check for "next rate" (future quote) and notify
                 val nextUsdQuote = quotes.firstOrNull { it.fuente == "usd" && it.fechaAnterior != null }

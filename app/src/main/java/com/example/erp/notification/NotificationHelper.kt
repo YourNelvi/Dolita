@@ -16,8 +16,10 @@ object NotificationHelper {
 
     private const val CHANNEL_ID_DAILY = "dolar_daily_rate"
     private const val CHANNEL_ID_NEXT = "dolar_next_rate"
+    private const val CHANNEL_ID_USDT = "dolar_usdt_hourly"
     private const val NOTIFICATION_ID_DAILY = 1001
     private const val NOTIFICATION_ID_NEXT = 1002
+    private const val NOTIFICATION_ID_USDT = 1003
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -39,8 +41,17 @@ object NotificationHelper {
                 description = "Aviso cuando se publica la próxima tasa del dólar"
             }
 
+            val usdtChannel = NotificationChannel(
+                CHANNEL_ID_USDT,
+                "USDT cada hora",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Notificación horaria con el precio del USDT"
+            }
+
             manager.createNotificationChannel(dailyChannel)
             manager.createNotificationChannel(nextChannel)
+            manager.createNotificationChannel(usdtChannel)
         }
     }
 
@@ -111,5 +122,37 @@ object NotificationHelper {
 
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.notify(NOTIFICATION_ID_NEXT, notification)
+    }
+
+    fun showUsdtNotification(context: Context, usdtRate: Double) {
+        createChannels(context)
+
+        val fmt = NumberFormat.getNumberInstance(Locale("es", "VE")).apply {
+            minimumFractionDigits = 2
+            maximumFractionDigits = 2
+        }
+
+        val title = "USDT (P2P)"
+        val body = "Promedio: $${fmt.format(usdtRate)} Bs"
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_USDT)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.notify(NOTIFICATION_ID_USDT, notification)
     }
 }

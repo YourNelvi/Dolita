@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.example.erp.notification.NotificationHelper
+import com.example.erp.widget.RateWidgetProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -40,6 +42,15 @@ class FetchUsdtWorker(
                         )
                     )
                 )
+                // Update home screen widget
+                RateWidgetProvider.updateAllWidgets(applicationContext)
+
+                // Show USDT hourly notification
+                NotificationHelper.showUsdtNotification(
+                    context = applicationContext,
+                    usdtRate = usdtQuote.promedio
+                )
+
                 Result.success()
             } else {
                 Log.w("FetchUsdtWorker", "USDT quote not available")
