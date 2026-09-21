@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -198,6 +199,7 @@ fun DolarScreenContent(
         val contentModifier = Modifier
             .fillMaxSize()
             .padding(innerPadding)
+            .imePadding()
 
         when {
             uiState.loading && uiState.quotes.isEmpty() -> {
