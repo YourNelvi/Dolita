@@ -18,5 +18,7 @@ local.properties
 # Release keystore (never commit)
 *.jks
 *.keystore
+# Release signing credentials (never commit)
+keystore.properties
 # Built APKs
 *.apk
