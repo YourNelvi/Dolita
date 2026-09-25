@@ -1,10 +1,14 @@
 package com.example.erp.overlay
 
 import android.annotation.SuppressLint
+import android.app.Notification
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
+import android.os.Build
 import android.os.IBinder
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -15,8 +19,10 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.TextView
+import androidx.core.app.NotificationCompat
 import com.example.erp.MainActivity
 import com.example.erp.R
+import com.example.erp.notification.NotificationHelper
 import kotlinx.coroutines.*
 import kotlin.math.abs
 
@@ -26,6 +32,15 @@ class OverlayService : Service() {
     private var overlayView: View? = null
     private var job: Job? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    companion object {
+        /**
+         * Kept in the 2000 block shared with BubbleService, away from the 1000 block that
+         * NotificationHelper uses for rate announcements, so an ongoing foreground notification can
+         * never overwrite a rate alert (or the other way around).
+         */
+        const val NOTIFICATION_ID = 2002
+    }
 
     // Rate data
     private var usdRate = 0.0
@@ -43,6 +58,14 @@ class OverlayService : Service() {
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate() {
         super.onCreate()
+
+        // BubbleService starts this service with startForegroundService(), so the platform kills it
+        // with ForegroundServiceDidNotStartInTimeException unless startForeground() runs first.
+        // It is the very first thing after super.onCreate(): inflating the window, adding the view
+        // and kicking off the rate fetch must never eat into the 5 second budget.
+        NotificationHelper.createChannels(this)
+        startForegroundCompat(createNotification())
+
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
         val inflater = LayoutInflater.from(this)
@@ -90,6 +113,48 @@ class OverlayService : Service() {
         setupViews()
         scope.launch { fetchRates() }
         startRateUpdates()
+    }
+
+    private fun createNotification(): Notification {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent: PendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, NotificationHelper.CHANNEL_ID_OVERLAY)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("Dolita superpuesta")
+            .setContentText("Toca para cerrar la calculadora")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setOngoing(true)
+            .setContentIntent(pendingIntent)
+            .build()
+    }
+
+    /**
+     * Since API 34 a service that declares a `foregroundServiceType` must use the typed
+     * [Service.startForeground] overload, otherwise the platform throws
+     * `MissingForegroundServiceTypeException`. `ServiceCompat` is not used here because the
+     * resolved `androidx.core:core:1.10.1` does not expose a `startForeground` overload at all,
+     * and this task may not add dependencies.
+     *
+     * Below API 34 the `specialUse` type does not exist yet, so the manifest attribute is ignored
+     * and the untyped overload is the correct call.
+     */
+    private fun startForegroundCompat(notification: Notification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     private fun setupViews() {
@@ -292,6 +357,7 @@ class OverlayService : Service() {
         job?.cancel()
         scope.cancel()
         overlayView?.let { windowManager?.removeView(it) }
+        stopForeground(true)
         super.onDestroy()
     }
 }

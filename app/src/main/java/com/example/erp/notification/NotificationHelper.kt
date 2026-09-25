@@ -17,6 +17,15 @@ object NotificationHelper {
     private const val CHANNEL_ID_DAILY = "dolar_daily_rate"
     private const val CHANNEL_ID_NEXT = "dolar_next_rate"
     private const val CHANNEL_ID_USDT = "dolar_usdt_hourly"
+
+    /**
+     * Ongoing notification for [com.example.erp.overlay.OverlayService]. Public because the service
+     * builds its foreground notification itself, the same way BubbleService does. The three rate
+     * announcement channels above are not a fit here: they are user-facing rate alerts with their
+     * own importance levels, not an ongoing "the overlay is running" notice.
+     */
+    const val CHANNEL_ID_OVERLAY = "dolar_overlay_channel"
+
     private const val NOTIFICATION_ID_DAILY = 1001
     private const val NOTIFICATION_ID_NEXT = 1002
     private const val NOTIFICATION_ID_USDT = 1003
@@ -49,9 +58,19 @@ object NotificationHelper {
                 description = "Notificación horaria con el precio del USDT"
             }
 
+            val overlayChannel = NotificationChannel(
+                CHANNEL_ID_OVERLAY,
+                "Dolita superpuesta",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Calculadora de tasas en ventana flotante"
+                setShowBadge(false)
+            }
+
             manager.createNotificationChannel(dailyChannel)
             manager.createNotificationChannel(nextChannel)
             manager.createNotificationChannel(usdtChannel)
+            manager.createNotificationChannel(overlayChannel)
         }
     }
 

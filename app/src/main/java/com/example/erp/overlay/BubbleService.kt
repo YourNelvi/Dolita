@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
@@ -33,7 +34,15 @@ class BubbleService : Service() {
     private var initialTouchY = 0f
 
     companion object {
-        const val NOTIFICATION_ID = 1001
+        /**
+         * Deliberately outside the 1000 block used by [com.example.erp.notification.NotificationHelper]
+         * for rate announcements. It used to be 1001, which is the daily-rate notification ID, so a
+         * daily notification silently replaced this ongoing foreground notification. The bubble
+         * entry point is not wired up yet, so no installed user holds a live 1001 bubble
+         * notification and re-keying it costs nothing. The daily-rate ID is left untouched because
+         * the system keeps already-posted notifications across app updates.
+         */
+        const val NOTIFICATION_ID = 2001
         const val CHANNEL_ID = "dolita_bubble_channel"
     }
 
@@ -42,8 +51,30 @@ class BubbleService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification())
+        startForegroundCompat(createNotification())
         createBubble()
+    }
+
+    /**
+     * Since API 34 a service that declares a `foregroundServiceType` must use the typed
+     * [Service.startForeground] overload, otherwise the platform throws
+     * `MissingForegroundServiceTypeException`. `ServiceCompat` is not used here because the
+     * resolved `androidx.core:core:1.10.1` does not expose a `startForeground` overload at all,
+     * and this task may not add dependencies.
+     *
+     * Below API 34 the `specialUse` type does not exist yet, so the manifest attribute is ignored
+     * and the untyped overload is the correct call.
+     */
+    private fun startForegroundCompat(notification: Notification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     private fun createNotificationChannel() {

@@ -6,6 +6,21 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <!--
+        Required since API 28 by every app that starts a foreground service. It is a normal
+        permission (no runtime prompt), but it still has to be declared: without it
+        Service.startForeground() throws SecurityException and the service dies in onCreate().
+        No maxSdkVersion is needed, this app targets API 37 only.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!--
+        Required since API 34 for any app that declares the "specialUse" foreground service type
+        used by OverlayService and BubbleService below. Platforms older than API 34 do not know
+        this permission name and ignore it, so a maxSdkVersion would be dead weight.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -40,16 +55,41 @@
                 android:resource="@xml/widget_rate_info" />
         </receiver>
 
-        <!-- Overlay Service -->
+        <!-- Overlay Service (floating rate calculator drawn over other apps) -->
         <service
             android:name=".overlay.OverlayService"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+
+            <!--
+                Google Play rejects a "specialUse" foreground service that does not declare a
+                subtype property (and the matching justification in the Play Console). The subtype
+                has to describe what the service actually does: this one keeps a user-launched
+                floating calculator window on top of other apps, which no standard foreground
+                service type covers.
+            -->
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="floating_rate_calculator_overlay" />
+        </service>
 
         <!-- Bubble Service (persistent floating icon) -->
         <service
             android:name=".overlay.BubbleService"
             android:exported="false"
-            android:foregroundServiceType="specialUse" />
+            android:foregroundServiceType="specialUse">
+
+            <!--
+                Google Play rejects a "specialUse" foreground service that does not declare a
+                subtype property (and the matching justification in the Play Console). The subtype
+                has to describe what the service actually does: this one keeps a draggable floating
+                rate icon on screen that opens the calculator overlay, which no standard foreground
+                service type covers.
+            -->
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="floating_rate_widget_overlay" />
+        </service>
     </application>
 
 </manifest>
