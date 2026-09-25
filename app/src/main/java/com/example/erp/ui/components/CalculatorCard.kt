@@ -53,6 +53,7 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.erp.data.CurrencyConverter
 import com.example.erp.data.DolarQuote
 import com.example.erp.ui.theme.accentColor
 import com.example.erp.ui.theme.cardBorder
@@ -92,51 +93,6 @@ fun CalculatorCard(quote: DolarQuote?) {
     var copiedVes by remember { mutableStateOf(false) }
     var copiedDiv by remember { mutableStateOf(false) }
 
-    fun parseDigits(digits: String): BigDecimal? {
-        if (digits.isEmpty()) return null
-        val padded = digits.padStart(3, '0')
-        val integerPart = padded.substring(0, padded.length - 2)
-        val decimalPart = padded.substring(padded.length - 2)
-        return BigDecimal("$integerPart.$decimalPart")
-    }
-
-    fun format(value: BigDecimal): String {
-        val rounded = value.setScale(2, RoundingMode.HALF_UP)
-        val plain = rounded.toPlainString().replace('.', ',')
-        val parts = plain.split(',')
-        val withThousands = parts[0].reversed().chunked(3).joinToString(".").reversed()
-        return if (parts.size > 1) "$withThousands,${parts[1]}" else "$withThousands,00"
-    }
-
-    fun toDigits(formatted: String): String {
-        val parts = formatted.split(',')
-        val integerPart = parts[0].replace(".", "")
-        val decimalPart = if (parts.size > 1) parts[1] else "00"
-        return (integerPart + decimalPart.padEnd(2, '0').take(2)).removePrefix("0").takeIf { it.isNotEmpty() } ?: "0"
-    }
-
-    fun vesToDiv() {
-        val v = parseDigits(vesDigits)
-        if (v == null || rate <= 0.0) {
-            divDigits = ""
-            return
-        }
-        val rateBD = BigDecimal.valueOf(rate)
-        val result = v.divide(rateBD, 10, RoundingMode.HALF_UP)
-        divDigits = toDigits(format(result))
-    }
-
-    fun divToVes() {
-        val v = parseDigits(divDigits)
-        if (v == null || rate <= 0.0) {
-            vesDigits = ""
-            return
-        }
-        val rateBD = BigDecimal.valueOf(rate)
-        val result = v.multiply(rateBD)
-        vesDigits = toDigits(format(result))
-    }
-
     fun copyToClipboard(text: String, label: String) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText(label, text)
@@ -151,7 +107,7 @@ fun CalculatorCard(quote: DolarQuote?) {
         hasTyped = false
         lastEdited = "div"
         divDigits = "100"
-        vesDigits = if (rate > 0.0) toDigits(format(BigDecimal.valueOf(rate))) else ""
+        vesDigits = if (rate > 0.0) CurrencyConverter.toDigits(CurrencyConverter.format(BigDecimal.valueOf(rate))) else ""
     }
 
     // A new rate re-prices the calculator but never touches the field being
@@ -163,10 +119,14 @@ fun CalculatorCard(quote: DolarQuote?) {
             return@LaunchedEffect
         }
         if (hasTyped) {
-            if (lastEdited == "ves") vesToDiv() else divToVes()
+            if (lastEdited == "ves") {
+                divDigits = CurrencyConverter.vesToDiv(vesDigits, rate)
+            } else {
+                vesDigits = CurrencyConverter.divToVes(divDigits, rate)
+            }
         } else {
             divDigits = "100"
-            vesDigits = toDigits(format(BigDecimal.valueOf(rate)))
+            vesDigits = CurrencyConverter.toDigits(CurrencyConverter.format(BigDecimal.valueOf(rate)))
         }
     }
 
@@ -228,13 +188,12 @@ fun CalculatorCard(quote: DolarQuote?) {
                         // the new input arrives appended to the current value).
                         val fresh = raw.removePrefix(vesDigits).filter { it.isDigit() }.take(10)
                         vesDigits = fresh
-                        divDigits = ""
                         lastEdited = "ves"
-                        vesToDiv()
+                        divDigits = CurrencyConverter.vesToDiv(vesDigits, rate)
                     } else {
                         vesDigits = raw.filter { it.isDigit() }.take(10)
                         lastEdited = "ves"
-                        vesToDiv()
+                        divDigits = CurrencyConverter.vesToDiv(vesDigits, rate)
                     }
                 },
                 trailingIcon = {
@@ -242,8 +201,8 @@ fun CalculatorCard(quote: DolarQuote?) {
                         copied = copiedVes,
                         onClick = {
                             val displayValue = if (vesDigits.isNotEmpty()) {
-                                val v = parseDigits(vesDigits)
-                                if (v != null) format(v) else ""
+                                val v = CurrencyConverter.parseDigits(vesDigits)
+                                if (v != null) CurrencyConverter.format(v) else ""
                             } else {
                                 "0,00"
                             }
@@ -269,13 +228,12 @@ fun CalculatorCard(quote: DolarQuote?) {
                         // First keystroke replaces the prefilled default (see VES field).
                         val fresh = raw.removePrefix(divDigits).filter { it.isDigit() }.take(10)
                         divDigits = fresh
-                        vesDigits = ""
                         lastEdited = "div"
-                        divToVes()
+                        vesDigits = CurrencyConverter.divToVes(divDigits, rate)
                     } else {
                         divDigits = raw.filter { it.isDigit() }.take(10)
                         lastEdited = "div"
-                        divToVes()
+                        vesDigits = CurrencyConverter.divToVes(divDigits, rate)
                     }
                 },
                 trailingIcon = {
@@ -283,8 +241,8 @@ fun CalculatorCard(quote: DolarQuote?) {
                         copied = copiedDiv,
                         onClick = {
                             val displayValue = if (divDigits.isNotEmpty()) {
-                                val v = parseDigits(divDigits)
-                                if (v != null) format(v) else ""
+                                val v = CurrencyConverter.parseDigits(divDigits)
+                                if (v != null) CurrencyConverter.format(v) else ""
                             } else {
                                 "1,00"
                             }
