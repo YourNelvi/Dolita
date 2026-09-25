@@ -23,6 +23,9 @@ class FetchQuotesWorker(
             if (quotes.isNotEmpty()) {
                 Log.d("FetchQuotesWorker", "Fetch successful: ${quotes.size} quotes")
 
+                // Update home screen widget
+                RateWidgetProvider.updateAllWidgets(applicationContext)
+
                 // Show daily rate notification
                 val usdQuote = quotes.firstOrNull { it.fuente == "usd" }
                 val eurQuote = quotes.firstOrNull { it.fuente == "eur" }
@@ -33,9 +36,6 @@ class FetchQuotesWorker(
                         eurRate = eurQuote?.promedio
                     )
                 }
-
-                // Update home screen widget
-                RateWidgetProvider.updateAllWidgets(applicationContext)
 
                 // Check for "next rate" (future quote) and notify
                 val nextUsdQuote = quotes.firstOrNull { it.fuente == "usd" && it.fechaAnterior != null }

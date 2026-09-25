@@ -63,7 +63,7 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- USDT -->
+    <!-- USDT/Paralelo -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -73,7 +73,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="USDT"
+            android:text="Paralelo"
             android:textColor="#B0B0B0"
             android:textSize="12sp" />
         <TextView

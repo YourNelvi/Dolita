@@ -55,7 +55,7 @@ class RateWidgetProvider : AppWidgetProvider() {
                 context, 0, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            views.setOnClickPendingIntent(R.layout.widget_rate, pendingIntent)
+            views.setOnClickPendingIntent(R.id.widget_title, pendingIntent)
 
             // Fetch rates in background
             val scope = CoroutineScope(Dispatchers.IO)
@@ -79,7 +79,7 @@ class RateWidgetProvider : AppWidgetProvider() {
                     views.setTextViewText(R.id.widget_usd,
                         usd?.let { "$${fmt.format(it.promedio)}" } ?: "--")
                     views.setTextViewText(R.id.widget_eur,
-                        eur?.let { "$${fmt.format(it.promedio)}" } ?: "--")
+                        eur?.let { "€${fmt.format(it.promedio)}" } ?: "--")
                     views.setTextViewText(R.id.widget_usdt,
                         usdt?.let { "$${fmt.format(it.promedio)}" } ?: "--")
 

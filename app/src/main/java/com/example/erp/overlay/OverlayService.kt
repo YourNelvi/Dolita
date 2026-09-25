@@ -2,6 +2,7 @@ package com.example.erp.overlay
 
 import android.annotation.SuppressLint
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.IBinder
@@ -9,6 +10,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
@@ -16,6 +18,7 @@ import android.widget.TextView
 import com.example.erp.MainActivity
 import com.example.erp.R
 import kotlinx.coroutines.*
+import kotlin.math.abs
 
 class OverlayService : Service() {
 
@@ -23,6 +26,17 @@ class OverlayService : Service() {
     private var overlayView: View? = null
     private var job: Job? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    // Rate data
+    private var usdRate = 0.0
+    private var eurRate = 0.0
+    private var usdtRate = 0.0
+    private var usdChange = 0.0
+    private var eurChange = 0.0
+    private var usdtChange = 0.0
+
+    // Selected rate (0=USD, 1=EUR, 2=USDT/Paralelo)
+    private var selectedRate = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -44,7 +58,7 @@ class OverlayService : Service() {
         ).apply {
             gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
             x = 0
-            y = 100
+            y = 150
         }
 
         // Make draggable
@@ -74,6 +88,7 @@ class OverlayService : Service() {
 
         windowManager?.addView(overlayView, params)
         setupViews()
+        scope.launch { fetchRates() }
         startRateUpdates()
     }
 
@@ -81,7 +96,9 @@ class OverlayService : Service() {
         val btnClose = overlayView?.findViewById<ImageButton>(R.id.btn_close)
         val btnOpenApp = overlayView?.findViewById<Button>(R.id.btn_open_app)
         val etAmount = overlayView?.findViewById<EditText>(R.id.et_amount)
-        val tvResult = overlayView?.findViewById<TextView>(R.id.tv_result)
+        val tabUsd = overlayView?.findViewById<TextView>(R.id.tab_usd)
+        val tabEur = overlayView?.findViewById<TextView>(R.id.tab_eur)
+        val tabUsdt = overlayView?.findViewById<TextView>(R.id.tab_usdt)
 
         btnClose?.setOnClickListener {
             stopSelf()
@@ -95,6 +112,17 @@ class OverlayService : Service() {
             stopSelf()
         }
 
+        // Rate tab clicks
+        tabUsd?.setOnClickListener { selectRate(0) }
+        tabEur?.setOnClickListener { selectRate(1) }
+        tabUsdt?.setOnClickListener { selectRate(2) }
+
+        // Calculator input - force keyboard
+        etAmount?.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) showKeyboard(etAmount)
+        }
+        etAmount?.setOnClickListener { showKeyboard(it as EditText) }
+
         etAmount?.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -102,41 +130,95 @@ class OverlayService : Service() {
                 updateConversion(s?.toString())
             }
         })
+
+        // Force keyboard on start
+        etAmount?.postDelayed({ showKeyboard(etAmount) }, 300)
+    }
+
+    private fun showKeyboard(editText: EditText) {
+        editText.requestFocus()
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    private fun selectRate(index: Int) {
+        selectedRate = index
+        val tabs = arrayOf(
+            overlayView?.findViewById<TextView>(R.id.tab_usd),
+            overlayView?.findViewById<TextView>(R.id.tab_eur),
+            overlayView?.findViewById<TextView>(R.id.tab_usdt)
+        )
+
+        tabs.forEachIndexed { i, tab ->
+            tab?.apply {
+                if (i == index) {
+                    setBackgroundResource(R.drawable.tab_selected)
+                    setTextColor(0xFFFFFFFF.toInt())
+                } else {
+                    setBackgroundResource(android.R.color.transparent)
+                    setTextColor(0x88FFFFFF.toInt())
+                }
+            }
+        }
+
+        updateRateDisplay()
+        updateConversion(
+            overlayView?.findViewById<EditText>(R.id.et_amount)?.text?.toString()
+        )
+    }
+
+    private fun updateRateDisplay() {
+        val tvLabel = overlayView?.findViewById<TextView>(R.id.tv_rate_label)
+        val tvMain = overlayView?.findViewById<TextView>(R.id.tv_rate_main)
+        val tvChange = overlayView?.findViewById<TextView>(R.id.tv_rate_change)
+
+        when (selectedRate) {
+            0 -> {
+                tvLabel?.text = "Dólar BCV"
+                tvMain?.text = "$${formatNumber(usdRate)}"
+                tvChange?.text = if (usdChange >= 0) "↑ ${formatNumber(abs(usdChange))}%" else "↓ ${formatNumber(abs(usdChange))}%"
+                tvChange?.setTextColor(if (usdChange >= 0) 0xFF4CAF50.toInt() else 0xFFF44336.toInt())
+            }
+            1 -> {
+                tvLabel?.text = "Euro BCV"
+                tvMain?.text = "€${formatNumber(eurRate)}"
+                tvChange?.text = if (eurChange >= 0) "↑ ${formatNumber(abs(eurChange))}%" else "↓ ${formatNumber(abs(eurChange))}%"
+                tvChange?.setTextColor(if (eurChange >= 0) 0xFF4CAF50.toInt() else 0xFFF44336.toInt())
+            }
+            2 -> {
+                tvLabel?.text = "Paralelo"
+                tvMain?.text = "$${formatNumber(usdtRate)}"
+                tvChange?.text = if (usdtChange >= 0) "↑ ${formatNumber(abs(usdtChange))}%" else "↓ ${formatNumber(abs(usdtChange))}%"
+                tvChange?.setTextColor(if (usdtChange >= 0) 0xFF4CAF50.toInt() else 0xFFF44336.toInt())
+            }
+        }
     }
 
     private fun updateConversion(amount: String?) {
         val tvResult = overlayView?.findViewById<TextView>(R.id.tv_result)
-        val tvRateUsd = overlayView?.findViewById<TextView>(R.id.tv_rate_usd)
+        if (tvResult == null) return
 
         if (amount.isNullOrBlank()) {
-            tvResult?.text = "Bs. 0,00"
+            tvResult.text = "Bs. 0,00"
             return
         }
 
         try {
-            val usdAmount = amount.replace(",", ".").toDouble()
-            val rateText = tvRateUsd?.text?.toString() ?: ""
-            val rate = extractRate(rateText)
+            val amountValue = amount.replace(",", ".").toDouble()
+            val rate = when (selectedRate) {
+                0 -> usdRate
+                1 -> eurRate
+                2 -> usdtRate
+                else -> usdRate
+            }
             if (rate > 0) {
-                val result = usdAmount * rate
-                tvResult?.text = "Bs. ${formatNumber(result)}"
+                val result = amountValue * rate
+                tvResult.text = "Bs. ${formatNumber(result)}"
+            } else {
+                tvResult.text = "Bs. 0,00"
             }
         } catch (_: Exception) {
-            tvResult?.text = "Bs. 0,00"
-        }
-    }
-
-    private fun extractRate(rateText: String): Double {
-        return try {
-            val clean = rateText
-                .replace("USD:", "")
-                .replace("$", "")
-                .replace(".", "")
-                .replace(",", ".")
-                .trim()
-            clean.toDouble()
-        } catch (_: Exception) {
-            0.0
+            tvResult.text = "Bs. 0,00"
         }
     }
 
@@ -156,55 +238,52 @@ class OverlayService : Service() {
         job = scope.launch {
             while (isActive) {
                 fetchRates()
-                delay(60_000) // Update every minute
+                delay(60_000)
             }
         }
     }
 
     private suspend fun fetchRates() {
         try {
-            val tvUsd = overlayView?.findViewById<TextView>(R.id.tv_rate_usd)
-            val tvEur = overlayView?.findViewById<TextView>(R.id.tv_rate_eur)
-            val tvUsdt = overlayView?.findViewById<TextView>(R.id.tv_rate_usdt)
-
             withContext(Dispatchers.IO) {
                 // Fetch USD
                 val usdUrl = java.net.URL("https://ve.dolarapi.com/v1/dolares/oficial")
                 val usdConn = usdUrl.openConnection() as java.net.HttpURLConnection
+                usdConn.connectTimeout = 5000
+                usdConn.readTimeout = 5000
                 val usdResponse = usdConn.inputStream.bufferedReader().readText()
                 val usdJson = org.json.JSONObject(usdResponse)
-                val usdRate = usdJson.getDouble("promedio")
-
-                withContext(Dispatchers.Main) {
-                    tvUsd?.text = "USD: $${formatNumber(usdRate)}"
-                }
+                usdRate = usdJson.getDouble("promedio")
+                usdChange = usdJson.optDouble("variacion", 0.0)
 
                 // Fetch EUR
                 val eurUrl = java.net.URL("https://ve.dolarapi.com/v1/euros/oficial")
                 val eurConn = eurUrl.openConnection() as java.net.HttpURLConnection
+                eurConn.connectTimeout = 5000
+                eurConn.readTimeout = 5000
                 val eurResponse = eurConn.inputStream.bufferedReader().readText()
                 val eurJson = org.json.JSONObject(eurResponse)
-                val eurRate = eurJson.getDouble("promedio")
+                eurRate = eurJson.getDouble("promedio")
+                eurChange = eurJson.optDouble("variacion", 0.0)
+
+                // Fetch Paralelo (was USDT)
+                val parUrl = java.net.URL("https://ve.dolarapi.com/v1/dolares/paralelo")
+                val parConn = parUrl.openConnection() as java.net.HttpURLConnection
+                parConn.connectTimeout = 5000
+                parConn.readTimeout = 5000
+                val parResponse = parConn.inputStream.bufferedReader().readText()
+                val parJson = org.json.JSONObject(parResponse)
+                usdtRate = parJson.getDouble("promedio")
+                usdtChange = parJson.optDouble("variacion", 0.0)
 
                 withContext(Dispatchers.Main) {
-                    tvEur?.text = "EUR: €${formatNumber(eurRate)}"
-                }
-
-                // Fetch USDT
-                val usdtUrl = java.net.URL("https://ve.dolarapi.com/v1/dolares/usdt")
-                val usdtConn = usdtUrl.openConnection() as java.net.HttpURLConnection
-                val usdtResponse = usdtConn.inputStream.bufferedReader().readText()
-                val usdtJson = org.json.JSONObject(usdtResponse)
-                val usdtRate = usdtJson.getDouble("promedio")
-
-                withContext(Dispatchers.Main) {
-                    tvUsdt?.text = "USDT: $$${formatNumber(usdtRate)}"
+                    updateRateDisplay()
                     updateConversion(
                         overlayView?.findViewById<EditText>(R.id.et_amount)?.text?.toString()
                     )
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             // Keep old values on error
         }
     }

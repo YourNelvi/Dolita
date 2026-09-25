@@ -4,7 +4,6 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.QUICK_SETTINGS_TILE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
@@ -41,20 +40,16 @@
                 android:resource="@xml/widget_rate_info" />
         </receiver>
 
-        <!-- Quick Settings Tile -->
-        <service
-            android:name=".tile.RateTileService"
-            android:exported="true"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
-            <intent-filter>
-                <action android:name="android.service.quicksettings.action.QS_TILE" />
-            </intent-filter>
-        </service>
-
         <!-- Overlay Service -->
         <service
             android:name=".overlay.OverlayService"
             android:exported="false" />
+
+        <!-- Bubble Service (persistent floating icon) -->
+        <service
+            android:name=".overlay.BubbleService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
     </application>
 
 </manifest>

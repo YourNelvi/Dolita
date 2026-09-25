@@ -10,7 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Hourly worker that fetches USDT (P2P Binance) rate and samples it.
+ * Hourly worker that fetches Paralelo rate and samples it.
  * P2P rates change frequently, so we sample once per hour.
  */
 class FetchUsdtWorker(
@@ -26,18 +26,18 @@ class FetchUsdtWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         return@withContext try {
-            Log.d("FetchUsdtWorker", "Starting hourly USDT fetch")
+            Log.d("FetchUsdtWorker", "Starting hourly Paralelo fetch")
             val quotes = repository.getQuotes()
-            val usdtQuote = quotes.firstOrNull { it.fuente == "usdt" }
-            if (usdtQuote != null) {
-                Log.d("FetchUsdtWorker", "USDT fetched: ${usdtQuote.promedio}")
+            val parQuote = quotes.firstOrNull { it.fuente == "usdt" }
+            if (parQuote != null) {
+                Log.d("FetchUsdtWorker", "Paralelo fetched: ${parQuote.promedio}")
                 // Sample and persist
                 historyStore.append(
                     listOf(
                         RateSample(
                             fuente = "usdt",
-                            nombre = "USDT (P2P)",
-                            precio = usdtQuote.promedio,
+                            nombre = "Paralelo",
+                            precio = parQuote.promedio,
                             timestampEpochMillis = System.currentTimeMillis()
                         )
                     )
@@ -45,19 +45,19 @@ class FetchUsdtWorker(
                 // Update home screen widget
                 RateWidgetProvider.updateAllWidgets(applicationContext)
 
-                // Show USDT hourly notification
+                // Show Paralelo hourly notification
                 NotificationHelper.showUsdtNotification(
                     context = applicationContext,
-                    usdtRate = usdtQuote.promedio
+                    usdtRate = parQuote.promedio
                 )
 
                 Result.success()
             } else {
-                Log.w("FetchUsdtWorker", "USDT quote not available")
+                Log.w("FetchUsdtWorker", "Paralelo quote not available")
                 Result.retry()
             }
         } catch (e: Exception) {
-            Log.e("FetchUsdtWorker", "USDT fetch failed: ${e.message}")
+            Log.e("FetchUsdtWorker", "Paralelo fetch failed: ${e.message}")
             Result.retry()
         }
     }
