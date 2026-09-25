@@ -57,7 +57,6 @@ import com.example.erp.data.DolarQuote
 import com.example.erp.ui.theme.accentColor
 import com.example.erp.ui.theme.cardBorder
 import com.example.erp.ui.theme.cardContainerColor
-import com.example.erp.ui.theme.positiveColor
 import kotlinx.coroutines.delay
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -320,11 +319,11 @@ private fun CopyIconButton(
     onReset: () -> Unit,
     contentDescription: String
 ) {
-    // Copy confirmation: green check marks the active (copied) state, and a
-    // single tick confirms it in the hand before the eye catches up.
+    // Copy confirmation: a state change, not a direction, so it wears the
+    // theme accent instead of the semantic up/down green.
     val haptics = LocalHapticFeedback.current
     val iconColor by animateColorAsState(
-        targetValue = if (copied) positiveColor() else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = if (copied) accentColor() else MaterialTheme.colorScheme.onSurfaceVariant,
         animationSpec = tween(durationMillis = 300),
         label = "copyIconColor"
     )

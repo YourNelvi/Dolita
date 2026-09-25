@@ -597,7 +597,9 @@ private fun FeaturedCard(quote: DolarQuote?, highPrecision: Boolean = false, fut
                         )
                         Spacer(Modifier.width(10.dp))
                     }
-                    PulseDot(color = positiveColor())
+                    // Liveness, not direction: the dot wears the theme accent.
+                    // Direction (the +/- values) keeps semantic green/red.
+                    PulseDot(color = accentColor())
                     Spacer(Modifier.width(6.dp))
                     Text(
                         text = "Act. ${formatUpdated(quote.fechaActualizacion)}",

@@ -31,6 +31,14 @@ enum class AppTheme(
     val lightOnPrimary: Long, val lightOnSecondary: Long, val lightOnTertiary: Long,
     val darkPrimary: Long, val darkSecondary: Long, val darkTertiary: Long,
     val darkOnPrimary: Long, val darkOnSecondary: Long, val darkOnTertiary: Long,
+    /**
+     * The accent role is deliberately NOT `primary`. `primary` is a fill color
+     * that carries white text, so a palette is free to be dark; the accent
+     * paints large numbers, rate labels and focus rings straight onto the card
+     * surface, so it must clear 4.5:1 there. Reusing one token for both jobs
+     * is what made ROJO_DEGRADADO and GRIS_NEUTRO unreadable.
+     */
+    val lightAccent: Long, val darkAccent: Long,
     val displayName: String
 ) {
     DOLAR_VERDE(
@@ -38,6 +46,7 @@ enum class AppTheme(
         0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000,
         0xFF6FCF97, 0xFFA5D6A7, 0xFFFFE082,
         0xFF000000, 0xFF000000, 0xFF000000,
+        0xFF0F7B46, 0xFF6FCF97,
         "Dólar Verde"
     ),
     AZUL_BANCARIO(
@@ -45,6 +54,7 @@ enum class AppTheme(
         0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000,
         0xFF64B5F6, 0xFF90CAF9, 0xFFFFD54F,
         0xFF000000, 0xFF000000, 0xFF000000,
+        0xFF1565C0, 0xFF64B5F6,
         "Azul Bancario"
     ),
     VIOLETA_ELEGANTE(
@@ -52,6 +62,7 @@ enum class AppTheme(
         0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000,
         0xFFBB86FC, 0xFFCE93D8, 0xFFFFD180,
         0xFF000000, 0xFF000000, 0xFF000000,
+        0xFF6200EE, 0xFFBB86FC,
         "Violeta Elegante"
     ),
     ALTO_CONTRASTE(
@@ -59,6 +70,7 @@ enum class AppTheme(
         0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000,
         0xFF00E676, 0xFF00C853, 0xFFFFEA00,
         0xFF000000, 0xFF000000, 0xFF000000,
+        0xFF1B5E20, 0xFF00E676,
         "Alto Contraste"
     ),
     GRIS_NEUTRO(
@@ -66,6 +78,7 @@ enum class AppTheme(
         0xFF000000, 0xFF000000, 0xFF000000,
         0xFF616161, 0xFF757575, 0xFF9E9E9E,
         0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+        0xFF616161, 0xFFB0BEC5,
         "Gris Neutro"
     ),
     ROJO_DEGRADADO(
@@ -73,6 +86,7 @@ enum class AppTheme(
         0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000,
         0xFFB71C1C, 0xFF7F0000, 0xFFD84315,
         0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000,
+        0xFFD32F2F, 0xFFFF8A80,
         "Rojo Degradado"
     )
 }
@@ -184,8 +198,12 @@ fun ERPTheme(
 
     val isDark = effectiveDarkTheme
     // One animator for the whole tree, instead of one per accent call site.
+    // The accent comes from its own role, not from `primary`: a palette's
+    // primary is a fill that carries white text and is allowed to be dark,
+    // while the accent is read straight off the card surface.
+    val accentTarget = if (isDark) Color(theme.darkAccent) else Color(theme.lightAccent)
     val animatedAccent by animateColorAsState(
-        targetValue = colorScheme.primary,
+        targetValue = accentTarget,
         animationSpec = tween(durationMillis = 350),
         label = "accentTransition"
     )
