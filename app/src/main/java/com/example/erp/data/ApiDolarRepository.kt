@@ -29,6 +29,18 @@ class ApiDolarRepository : DolarRepository {
         }
     }
 
+    /**
+     * BCV only: ONE request returns both USD and EUR, so a caller that only
+     * needs the official rate never pays for a second call.
+     */
+    suspend fun fetchBcvQuotes(): List<DolarQuote> = withContext(Dispatchers.IO) { fetchBcv() }
+
+    /**
+     * Parallel market only (Binance P2P USDT/VES). Kept separate so a caller
+     * showing the official rate does not trigger this request at all.
+     */
+    suspend fun fetchUsdtQuote(): DolarQuote = withContext(Dispatchers.IO) { fetchUsdt() }
+
     private fun fetchBcv(): List<DolarQuote> {
         Log.d(TAG, "Requesting $BCV_URL")
         return sharedHttpClient.newCall(buildGet(BCV_URL)).execute().use { response ->

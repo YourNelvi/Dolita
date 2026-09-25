@@ -8,62 +8,94 @@ import com.example.erp.notification.NotificationHelper
 import com.example.erp.widget.RateWidgetProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
 
+/**
+ * Official-rate worker (USD + EUR from BCV).
+ *
+ * Runs twice a day: a morning pass that announces the rate of the day, and an
+ * evening pass that only looks for the next day's rate, which BCV publishes
+ * later. It fetches BCV alone — the parallel market belongs to the hourly
+ * worker — and it notifies only when something actually changed, because a job
+ * on a cadence is not the same thing as news.
+ */
 class FetchQuotesWorker(
     context: Context,
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
 
-    private val repository = CachedDolarRepository(ApiDolarRepository(), applicationContext)
+    private val apiRepository = ApiDolarRepository()
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        val isEveningCheck = inputData.getString(KEY_CHECK) == CHECK_EVENING
         return@withContext try {
-            Log.d("FetchQuotesWorker", "Starting scheduled fetch")
-            val quotes = repository.getQuotes()
-            if (quotes.isNotEmpty()) {
-                Log.d("FetchQuotesWorker", "Fetch successful: ${quotes.size} quotes")
+            Log.d(TAG, "BCV fetch (${if (isEveningCheck) "evening" else "morning"})")
+            val quotes = apiRepository.fetchBcvQuotes()
+            if (quotes.isEmpty()) {
+                Log.w(TAG, "BCV returned no quotes")
+                return@withContext Result.retry()
+            }
 
-                // Update home screen widget
-                RateWidgetProvider.updateAllWidgets(applicationContext)
+            val usdQuote = quotes.firstOrNull { it.fuente == "usd" }
+            val eurQuote = quotes.firstOrNull { it.fuente == "eur" }
 
-                // Show daily rate notification
-                val usdQuote = quotes.firstOrNull { it.fuente == "usd" }
-                val eurQuote = quotes.firstOrNull { it.fuente == "eur" }
-                usdQuote?.let {
-                    NotificationHelper.showDailyRateNotification(
-                        context = applicationContext,
-                        usdRate = it.promedio,
-                        eurRate = eurQuote?.promedio
-                    )
-                }
+            quotes.forEach { QuotesCache.upsert(applicationContext, it) }
+            RateWidgetProvider.updateAllWidgets(applicationContext)
 
-                // Check for "next rate" (future quote) and notify
-                val nextUsdQuote = quotes.firstOrNull { it.fuente == "usd" && it.fechaAnterior != null }
-                nextUsdQuote?.let { quote ->
-                    // If the API date is in the future, it's a "next rate"
-                    val today = java.time.LocalDate.now()
-                    val quoteDate = try {
-                        java.time.LocalDate.parse(quote.fechaActualizacion)
-                    } catch (e: Exception) { null }
-
-                    if (quoteDate != null && quoteDate.isAfter(today)) {
-                        NotificationHelper.showNextRateNotification(
-                            context = applicationContext,
-                            nextUsdRate = quote.promedio,
-                            nextDate = quote.fechaActualizacion
+            // Morning only: the rate of the day. The evening pass exists purely
+            // to catch tomorrow's number, so re-announcing today's here would
+            // be the duplicate this whole class exists to avoid.
+            if (!isEveningCheck) {
+                usdQuote?.let { usd ->
+                    if (NotificationState.shouldNotifyDailyRate(
+                            applicationContext,
+                            usd.promedio,
+                            usd.fechaActualizacion
                         )
+                    ) {
+                        NotificationHelper.showDailyRateNotification(
+                            context = applicationContext,
+                            usdRate = usd.promedio,
+                            eurRate = eurQuote?.promedio
+                        )
+                    } else {
+                        Log.d(TAG, "Official rate unchanged; skipping daily notification")
                     }
                 }
-
-                Result.success()
-            } else {
-                Log.w("FetchQuotesWorker", "Fetch returned empty quotes")
-                Result.retry()
             }
+
+            // Both passes: the next day's rate, once, when it appears.
+            usdQuote?.let { usd ->
+                val quoteDate = runCatching { LocalDate.parse(usd.fechaActualizacion) }.getOrNull()
+                if (quoteDate != null && quoteDate.isAfter(LocalDate.now())) {
+                    if (NotificationState.shouldNotifyNextRate(
+                            applicationContext,
+                            usd.promedio,
+                            usd.fechaActualizacion
+                        )
+                    ) {
+                        NotificationHelper.showNextRateNotification(
+                            context = applicationContext,
+                            nextUsdRate = usd.promedio,
+                            nextDate = usd.fechaActualizacion
+                        )
+                    } else {
+                        Log.d(TAG, "Next rate already announced; skipping")
+                    }
+                }
+            }
+
+            Result.success()
         } catch (e: Exception) {
-            Log.e("FetchQuotesWorker", "Fetch failed: ${e.message}")
-            // Reintentar con backoff exponencial
+            Log.e(TAG, "BCV fetch failed: ${e.message}")
             Result.retry()
         }
+    }
+
+    companion object {
+        private const val TAG = "FetchQuotesWorker"
+        const val KEY_CHECK = "check"
+        const val CHECK_MORNING = "morning"
+        const val CHECK_EVENING = "evening"
     }
 }

@@ -22,6 +22,9 @@ import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import com.example.erp.MainActivity
 import com.example.erp.R
+import com.example.erp.data.ApiDolarRepository
+import com.example.erp.data.QuotesCache
+import com.example.erp.data.RateRefreshPolicy
 import com.example.erp.notification.NotificationHelper
 import kotlinx.coroutines.*
 import kotlin.math.abs
@@ -34,6 +37,17 @@ class OverlayService : Service() {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     companion object {
+        /** Index of the parallel-market tab (the only one needing its own request). */
+        private const val PARALLEL_TAB = 2
+
+        /**
+         * How old the stored snapshot may get before the overlay spends a
+         * request of its own. Generous on purpose: the hourly parallelo worker
+         * refreshes the cache well inside this, so the fallback almost never
+         * fires while the app has been used at least once today.
+         */
+        private const val STALE_AFTER_MILLIS = 90 * 60_000L
+
         /**
          * Kept in the 2000 block shared with BubbleService, away from the 1000 block that
          * NotificationHelper uses for rate announcements, so an ongoing foreground notification can
@@ -52,6 +66,13 @@ class OverlayService : Service() {
 
     // Selected rate (0=USD, 1=EUR, 2=USDT/Paralelo)
     private var selectedRate = 0
+
+    /**
+     * The overlay reads the same repositories as the main app instead of its
+     * own copy-pasted HTTP calls, so both surfaces can never disagree about
+     * what the rate is and the cache and sampling policy apply here too.
+     */
+    private val apiRepository by lazy { ApiDolarRepository() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -111,7 +132,6 @@ class OverlayService : Service() {
 
         windowManager?.addView(overlayView, params)
         setupViews()
-        scope.launch { fetchRates() }
         startRateUpdates()
     }
 
@@ -230,6 +250,12 @@ class OverlayService : Service() {
         updateConversion(
             overlayView?.findViewById<EditText>(R.id.et_amount)?.text?.toString()
         )
+
+        // Switching to a source we have never loaded needs its data now, not at
+        // the end of the current backoff window.
+        if (selectedRate == PARALLEL_TAB && usdtRate == 0.0) {
+            scope.launch { refreshVisibleSource() }
+        }
     }
 
     private fun updateRateDisplay() {
@@ -299,58 +325,114 @@ class OverlayService : Service() {
         return if (parts.size > 1) "$withThousands,${parts[1]}" else "$withThousands,00"
     }
 
+    /**
+     * Rate refresh loop.
+     *
+     * The scheduled workers own the network now: they sample on a cadence and
+     * write to the shared cache. The overlay reads that cache, so keeping it
+     * open costs a local read every tick instead of an HTTP request. The direct
+     * fetch survives only as a cold-start fallback for when the cache is empty
+     * or clearly stale, and it still backs off while nothing moves.
+     */
     private fun startRateUpdates() {
         job = scope.launch {
+            paintFromCache()
+            var unchangedStreak = 0
             while (isActive) {
-                fetchRates()
-                delay(60_000)
+                if (paintFromCache()) {
+                    // Fresh data arrived from a worker: stay on the fast rung.
+                    unchangedStreak = 0
+                } else {
+                    val cacheAge = lastCacheAgeMillis()
+                    val stale = cacheAge == null || cacheAge > STALE_AFTER_MILLIS
+                    if (!stale) {
+                        delay(RateRefreshPolicy.nextDelayMillis(0))
+                        continue
+                    }
+                    val changed = refreshVisibleSource()
+                    unchangedStreak = if (changed) 0 else unchangedStreak + 1
+                    delay(RateRefreshPolicy.nextDelayMillis(unchangedStreak))
+                }
             }
         }
     }
 
-    private suspend fun fetchRates() {
-        try {
-            withContext(Dispatchers.IO) {
-                // Fetch USD
-                val usdUrl = java.net.URL("https://ve.dolarapi.com/v1/dolares/oficial")
-                val usdConn = usdUrl.openConnection() as java.net.HttpURLConnection
-                usdConn.connectTimeout = 5000
-                usdConn.readTimeout = 5000
-                val usdResponse = usdConn.inputStream.bufferedReader().readText()
-                val usdJson = org.json.JSONObject(usdResponse)
-                usdRate = usdJson.getDouble("promedio")
-                usdChange = usdJson.optDouble("variacion", 0.0)
+    /** Age of the stored snapshot, or null when there is nothing stored. */
+    private suspend fun lastCacheAgeMillis(): Long? {
+        val cached = runCatching { QuotesCache.getCached(applicationContext) }.getOrNull() ?: return null
+        return System.currentTimeMillis() - cached.timestamp
+    }
 
-                // Fetch EUR
-                val eurUrl = java.net.URL("https://ve.dolarapi.com/v1/euros/oficial")
-                val eurConn = eurUrl.openConnection() as java.net.HttpURLConnection
-                eurConn.connectTimeout = 5000
-                eurConn.readTimeout = 5000
-                val eurResponse = eurConn.inputStream.bufferedReader().readText()
-                val eurJson = org.json.JSONObject(eurResponse)
-                eurRate = eurJson.getDouble("promedio")
-                eurChange = eurJson.optDouble("variacion", 0.0)
+    /**
+     * Re-reads the cache and repaints if anything moved. Returns true when the
+     * display was updated from stored data — a local read, never a request.
+     */
+    private suspend fun paintFromCache(): Boolean {
+        val cached = runCatching { QuotesCache.getCached(applicationContext) }.getOrNull() ?: return false
+        val bySource = cached.quotes.associateBy { it.fuente }
 
-                // Fetch Paralelo (was USDT)
-                val parUrl = java.net.URL("https://ve.dolarapi.com/v1/dolares/paralelo")
-                val parConn = parUrl.openConnection() as java.net.HttpURLConnection
-                parConn.connectTimeout = 5000
-                parConn.readTimeout = 5000
-                val parResponse = parConn.inputStream.bufferedReader().readText()
-                val parJson = org.json.JSONObject(parResponse)
-                usdtRate = parJson.getDouble("promedio")
-                usdtChange = parJson.optDouble("variacion", 0.0)
-
-                withContext(Dispatchers.Main) {
-                    updateRateDisplay()
-                    updateConversion(
-                        overlayView?.findViewById<EditText>(R.id.et_amount)?.text?.toString()
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            // Keep old values on error
+        var changed = false
+        bySource["usd"]?.let {
+            if (it.promedio != usdRate) changed = true
+            usdRate = it.promedio
+            usdChange = it.variacion ?: 0.0
         }
+        bySource["eur"]?.let {
+            if (it.promedio != eurRate) changed = true
+            eurRate = it.promedio
+            eurChange = it.variacion ?: 0.0
+        }
+        bySource["usdt"]?.let {
+            if (it.promedio != usdtRate) changed = true
+            usdtRate = it.promedio
+            usdtChange = it.variacion ?: 0.0
+        }
+
+        if (changed) publish(changed)
+        return changed
+    }
+
+    /**
+     * Fetches only what the selected tab shows, and reports whether any value
+     * actually moved. A failure counts as "no change", so a dead endpoint backs
+     * off instead of being hammered.
+     */
+    private suspend fun refreshVisibleSource(): Boolean = try {
+        if (selectedRate == PARALLEL_TAB) {
+            val quote = apiRepository.fetchUsdtQuote()
+            val changed = quote.promedio != usdtRate
+            usdtRate = quote.promedio
+            usdtChange = quote.variacion ?: 0.0
+            if (changed) publish(changed)
+            changed
+        } else {
+            // One BCV request covers both official tabs.
+            val quotes = apiRepository.fetchBcvQuotes()
+            val usd = quotes.firstOrNull { it.fuente == "usd" }
+            val eur = quotes.firstOrNull { it.fuente == "eur" }
+            var changed = false
+            usd?.let {
+                if (it.promedio != usdRate) changed = true
+                usdRate = it.promedio
+                usdChange = it.variacion ?: 0.0
+            }
+            eur?.let {
+                if (it.promedio != eurRate) changed = true
+                eurRate = it.promedio
+                eurChange = it.variacion ?: 0.0
+            }
+            if (changed) publish(changed)
+            changed
+        }
+    } catch (e: Exception) {
+        // Keep the values already on screen and let the backoff widen.
+        false
+    }
+
+    private fun publish(changed: Boolean) {
+        if (!changed) return
+        updateRateDisplay()
+        updateConversion(overlayView?.findViewById<EditText>(R.id.et_amount)?.text?.toString())
     }
 
     override fun onDestroy() {

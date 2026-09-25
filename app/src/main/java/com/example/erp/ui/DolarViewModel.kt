@@ -78,14 +78,56 @@ open class DolarViewModel @JvmOverloads constructor(
         }
     }
 
-    fun load() {
+    /**
+     * Paints from what is already stored and only spends a request when the
+     * stored snapshot is too old to be honest. Opening the app is not a reason
+     * to hit the network: the scheduled workers already keep the cache current,
+     * and a manual refresh is the explicit way to override that.
+     */
+    fun load(force: Boolean = false) {
         viewModelScope.launch {
+            if (!force) {
+                val cached = runCatching {
+                    com.example.erp.data.QuotesCache.getCached(getApplication())
+                }.getOrNull()
+                val age = cached?.let { System.currentTimeMillis() - it.timestamp } ?: Long.MAX_VALUE
+                val fresh = cached != null && cached.quotes.isNotEmpty() &&
+                    com.example.erp.data.RateSchedulePolicy.isCacheFresh(age)
+                android.util.Log.d(
+                    "DolitaLoad",
+                    "cache=${cached?.quotes?.size ?: 0} quotes, age=${if (age == Long.MAX_VALUE) "none" else "${age / 1000}s"}, fresh=$fresh"
+                )
+                if (fresh) {
+                    applyQuotes(cached!!.quotes)
+                    return@launch
+                }
+            }
+
             _uiState.update { it.copy(loading = true, error = null) }
             try {
                 val rawQuotes = repository.getQuotes()
-                rawApiQuotes = rawQuotes
-                val today = java.time.LocalDate.now()
-                val zoneId = java.time.ZoneId.systemDefault()
+                applyQuotes(rawQuotes)
+            } catch (exception: Exception) {
+                _uiState.update { state ->
+                    state.copy(
+                        loading = false,
+                        error = mapExceptionToError(exception)
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Turns raw quotes into UI state. Shared by the cached and the network path
+     * so both produce the same "today vs next rate" split and the same history
+     * sampling — a cached render must not differ from a fresh one.
+     */
+    private suspend fun applyQuotes(rawQuotes: List<DolarQuote>) {
+        runCatching {
+            rawApiQuotes = rawQuotes
+            val today = java.time.LocalDate.now()
+            val zoneId = java.time.ZoneId.systemDefault()
 
                 // Separar cotizaciones: las de hoy vs las de manana
                 val todayQuotes = mutableListOf<DolarQuote>()
@@ -154,20 +196,21 @@ open class DolarViewModel @JvmOverloads constructor(
                     )
                 }
 
-                // Notify user when a new "next rate" is available
+                // The next-rate alert belongs to the scheduled worker, and only
+                // when the number is new: announcing it on every app open was
+                // the same noise the daily alert had.
                 futureForSelected?.let { future ->
-                    com.example.erp.notification.NotificationHelper.showNextRateNotification(
-                        context = getApplication(),
-                        nextUsdRate = future.promedio,
-                        nextDate = future.fechaActualizacion
-                    )
-                }
-            } catch (exception: Exception) {
-                _uiState.update { state ->
-                    state.copy(
-                        loading = false,
-                        error = mapExceptionToError(exception)
-                    )
+                    if (com.example.erp.data.NotificationState.shouldNotifyNextRate(
+                            getApplication(),
+                            future.promedio,
+                            future.fechaActualizacion
+                        )
+                    ) {
+                        com.example.erp.notification.NotificationHelper.showNextRateNotification(
+                            context = getApplication(),
+                            nextUsdRate = future.promedio,
+                            nextDate = future.fechaActualizacion
+                        )
                 }
             }
         }

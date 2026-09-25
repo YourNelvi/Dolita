@@ -5,39 +5,85 @@ import android.util.Log
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequest
 import androidx.work.WorkManager
+import androidx.work.workDataOf
+import java.time.ZoneId
 import java.util.concurrent.TimeUnit
 
 object QuoteScheduler {
-    private const val DAILY_WORK_NAME = "daily_quotes_fetch"
+    private const val MORNING_WORK_NAME = "daily_quotes_fetch"
+    private const val EVENING_WORK_NAME = "evening_next_rate_fetch"
     private const val USDT_WORK_NAME = "hourly_usdt_fetch"
-    private const val FETCH_HOUR = 8 // 8 AM
-    private const val FLEX_WINDOW_HOURS = 1L // Ventana de 1 hora (8-9 AM)
+    private const val FLEX_WINDOW_HOURS = 1L
+
+    private val zone: ZoneId get() = ZoneId.systemDefault()
 
     fun scheduleDailyFetch(context: Context) {
-        val workRequest = PeriodicWorkRequest.Builder(
+        // Morning: announce the rate of the day.
+        val morning = PeriodicWorkRequest.Builder(
             FetchQuotesWorker::class.java,
-            24L, TimeUnit.HOURS, // Repetir cada 24 horas
-            FLEX_WINDOW_HOURS, TimeUnit.HOURS // Ventana flexible
+            24L, TimeUnit.HOURS,
+            FLEX_WINDOW_HOURS, TimeUnit.HOURS
         )
-            .setInitialDelay(calculateInitialDelay(), TimeUnit.MILLISECONDS)
-            .addTag(DAILY_WORK_NAME)
+            .setInitialDelay(
+                RateSchedulePolicy.millisUntilHour(
+                    System.currentTimeMillis(),
+                    RateSchedulePolicy.BCV_MORNING_HOUR,
+                    zone
+                ),
+                TimeUnit.MILLISECONDS
+            )
+            .setInputData(workDataOf(FetchQuotesWorker.KEY_CHECK to FetchQuotesWorker.CHECK_MORNING))
+            .addTag(MORNING_WORK_NAME)
             .build()
 
-        WorkManager.getInstance(context)
-            .enqueueUniquePeriodicWork(
-                DAILY_WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
-                workRequest
+        // Evening: BCV publishes tomorrow's rate later in the day, so the only
+        // thing this pass can announce is the next rate.
+        val evening = PeriodicWorkRequest.Builder(
+            FetchQuotesWorker::class.java,
+            24L, TimeUnit.HOURS,
+            FLEX_WINDOW_HOURS, TimeUnit.HOURS
+        )
+            .setInitialDelay(
+                RateSchedulePolicy.millisUntilHour(
+                    System.currentTimeMillis(),
+                    RateSchedulePolicy.BCV_EVENING_HOUR,
+                    zone
+                ),
+                TimeUnit.MILLISECONDS
             )
-        Log.d("QuoteScheduler", "Scheduled daily fetch for ~$FETCH_HOUR:00 AM")
+            .setInputData(workDataOf(FetchQuotesWorker.KEY_CHECK to FetchQuotesWorker.CHECK_EVENING))
+            .addTag(EVENING_WORK_NAME)
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            MORNING_WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            morning
+        )
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            EVENING_WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            evening
+        )
+        Log.d(
+            "QuoteScheduler",
+            "Scheduled BCV checks at ${RateSchedulePolicy.BCV_MORNING_HOUR}:00 and " +
+                "${RateSchedulePolicy.BCV_EVENING_HOUR}:00 device time"
+        )
     }
 
     fun scheduleHourlyUsdtFetch(context: Context) {
+        // The cadence itself lands on the hour; the worker additionally refuses
+        // to spend a request outside the 08:00-22:00 device window.
         val workRequest = PeriodicWorkRequest.Builder(
             FetchUsdtWorker::class.java,
-            1L, TimeUnit.HOURS, // Every hour
-            15L, TimeUnit.MINUTES // Flex window of 15 min
+            1L, TimeUnit.HOURS,
+            15L, TimeUnit.MINUTES
         )
+            .setInitialDelay(
+                RateSchedulePolicy.millisToNextHour(System.currentTimeMillis(), zone),
+                TimeUnit.MILLISECONDS
+            )
             .addTag(USDT_WORK_NAME)
             .build()
 
@@ -47,30 +93,19 @@ object QuoteScheduler {
                 ExistingPeriodicWorkPolicy.KEEP,
                 workRequest
             )
-        Log.d("QuoteScheduler", "Scheduled hourly USDT fetch")
+        Log.d(
+            "QuoteScheduler",
+            "Scheduled hourly Paralelo sampling, on the hour, " +
+                "${RateSchedulePolicy.PARALLEL_WINDOW_START_HOUR}:00-" +
+                "${RateSchedulePolicy.PARALLEL_WINDOW_END_HOUR}:00 device time"
+        )
     }
 
     fun cancelScheduledFetch(context: Context) {
-        WorkManager.getInstance(context).cancelUniqueWork(DAILY_WORK_NAME)
-        WorkManager.getInstance(context).cancelUniqueWork(USDT_WORK_NAME)
+        val workManager = WorkManager.getInstance(context)
+        workManager.cancelUniqueWork(MORNING_WORK_NAME)
+        workManager.cancelUniqueWork(EVENING_WORK_NAME)
+        workManager.cancelUniqueWork(USDT_WORK_NAME)
         Log.d("QuoteScheduler", "Cancelled all scheduled fetches")
-    }
-
-    private fun calculateInitialDelay(): Long {
-        val now = System.currentTimeMillis()
-        val calendar = java.util.Calendar.getInstance().apply {
-            timeInMillis = now
-            set(java.util.Calendar.HOUR_OF_DAY, FETCH_HOUR)
-            set(java.util.Calendar.MINUTE, 0)
-            set(java.util.Calendar.SECOND, 0)
-            set(java.util.Calendar.MILLISECOND, 0)
-        }
-
-        // Si ya pasó la hora hoy, programar para mañana
-        if (now >= calendar.timeInMillis) {
-            calendar.add(java.util.Calendar.DAY_OF_MONTH, 1)
-        }
-
-        return calendar.timeInMillis - now
     }
 }

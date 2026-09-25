@@ -72,6 +72,20 @@ object QuotesCache {
         readCachedSync(getPrefs(context))
     }
 
+    /**
+     * Replaces the entry for [quote]'s source and leaves every other source
+     * untouched. `save` overwrites the whole snapshot, so a worker that
+     * refreshed only one market would otherwise erase the others.
+     */
+    suspend fun upsert(context: Context, quote: DolarQuote) = withContext(Dispatchers.IO) {
+        val existing = readCachedSync(getPrefs(context))
+        val merged = existing?.quotes
+            ?.filterNot { it.fuente == quote.fuente }
+            ?.plus(quote)
+            ?: listOf(quote)
+        save(merged, context)
+    }
+
     suspend fun clear(context: Context) = withContext(Dispatchers.IO) {
         getPrefs(context).edit()
             .remove(KEY_QUOTES_JSON)

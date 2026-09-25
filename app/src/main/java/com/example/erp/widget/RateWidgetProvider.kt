@@ -10,6 +10,7 @@ import com.example.erp.MainActivity
 import com.example.erp.R
 import com.example.erp.data.ApiDolarRepository
 import com.example.erp.data.CachedDolarRepository
+import com.example.erp.data.QuotesCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -57,15 +58,23 @@ class RateWidgetProvider : AppWidgetProvider() {
             )
             views.setOnClickPendingIntent(R.id.widget_title, pendingIntent)
 
-            // Fetch rates in background
+            // Paint from what is already stored. The widget used to fetch on
+            // every update — once per placed instance, so three widgets on a
+            // home screen meant three requests every time the launcher decided
+            // to refresh, to redraw a rate that publishes once a day. The
+            // scheduled workers keep the cache current and push an update when
+            // they do; the fetch below is only the cold-start fallback.
             val scope = CoroutineScope(Dispatchers.IO)
             scope.launch {
                 try {
-                    val repository = CachedDolarRepository(
-                        ApiDolarRepository(),
-                        context.applicationContext
-                    )
-                    val quotes = repository.getQuotes()
+                    val cached = QuotesCache.getCached(context.applicationContext)
+                    val quotes = cached?.quotes?.takeIf { it.isNotEmpty() }
+                        ?: runCatching {
+                            CachedDolarRepository(
+                                ApiDolarRepository(),
+                                context.applicationContext
+                            ).getQuotes()
+                        }.getOrDefault(emptyList())
 
                     val fmt = NumberFormat.getNumberInstance(Locale("es", "VE")).apply {
                         minimumFractionDigits = 2

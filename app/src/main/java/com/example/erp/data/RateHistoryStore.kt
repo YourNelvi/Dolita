@@ -91,6 +91,24 @@ class FileHistoryStore(
     }
 
     override suspend fun fetchAndPopulateHistorical() {
+        // History only changes when BCV publishes, which is once a day. This
+        // used to run on every app open and re-download two full history series
+        // just to merge samples that were already on disk. If the store already
+        // reaches yesterday, any newer day simply has not been published yet.
+        //
+        // Future-dated samples are excluded on purpose: the "next rate" is
+        // stored as a sample, so taking the newest timestamp would let a pending
+        // rate masquerade as a complete history and suppress the fetch for days.
+        val today = java.time.LocalDate.now(zoneId)
+        val newestStoredDay = readCurrentYear()
+            .map { localDateOf(it.timestampEpochMillis, zoneId) }
+            .filter { !it.isAfter(today) }
+            .maxOrNull()
+        if (newestStoredDay != null && !newestStoredDay.isBefore(today.minusDays(1))) {
+            android.util.Log.d("RateHistoryStore", "History already current through $newestStoredDay; skipping fetch")
+            return
+        }
+
         val historicalData = try {
             withContext(Dispatchers.IO) {
                 fetchHistoricalFromApi() + fetchHistoricalEuroFromApi()
