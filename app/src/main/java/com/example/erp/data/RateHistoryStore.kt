@@ -265,10 +265,17 @@ fun rateYearName(epochMillis: Long, zoneId: ZoneId = ZoneId.systemDefault()): St
 /**
  * Decides which quotes deserve a new sample for this load.
  * BCV (usd, eur) dedupes to one sample per fuente per calendar day;
- * USDT dedupes to one sample per hour (P2P rates change frequently).
+ * USDT dedupes to one sample per hour (P2P rates change frequently)
+ * and, on top of that, to one sample per app-open session.
  */
 object RateSamplingPolicy {
 
+    /**
+     * @param usdtSampledThisSession true once a USDT sample has already been
+     *   taken in the current app session. When true, USDT quotes are skipped
+     *   entirely, even on an empty [existing] list or in a fresh hour.
+     *   BCV quotes are never affected by this flag.
+     */
     fun shouldSample(
         existing: List<RateSample>,
         quotes: List<DolarQuote>,
@@ -322,6 +329,10 @@ object RateSamplingPolicy {
                     }
                 }
                 "usdt" -> {
+                    // Session gate: once this session has produced a USDT
+                    // sample, later loads in the same session add nothing,
+                    // regardless of hour or persisted history.
+                    if (usdtSampledThisSession) return@forEach
                     // Sample USDT once per hour (P2P rates change frequently)
                     val alreadySampledThisHour = existing.any {
                         it.fuente == "usdt" &&
