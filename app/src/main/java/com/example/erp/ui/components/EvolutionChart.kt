@@ -70,7 +70,11 @@ private fun Path.addSmoothSpline(points: List<Offset>) {
 @Composable
 fun EvolutionChart(
     samples: List<RateSample>,
-    lineColor: Color = MaterialTheme.colorScheme.primary,
+    // Defaults to the palette accent, NOT `primary`. A flat series falls back to
+    // this value for its stroke, and `primary` is a fill color that carries
+    // white text and is allowed to be very dark (ROJO_DEGRADADO, GRIS_NEUTRO),
+    // which disappears against the dark card surface.
+    lineColor: Color = accentColor(),
     modifier: Modifier = Modifier,
     maxPoints: Int = 15,
     showHours: Boolean = false,
