@@ -62,3 +62,21 @@ val RedGradientTertiary80 = Color(0xFFFF6D00)  // Naranja-rojo acento
 val RedGradientPrimary40 = Color(0xFFB71C1C)   // Rojo muy oscuro (casi negro)
 val RedGradientSecondary40 = Color(0xFF7F0000) // Negro-rojizo
 val RedGradientTertiary40 = Color(0xFFD84315)  // Rojo ladrillo
+
+// ===== Fintech Dark tokens =====
+// Deep matte graphite base. Existing palette values above are untouched so the
+// AppTheme selector keeps working; these tokens only define the fintech surfaces.
+val FintechBackground = Color(0xFF0B0C0E)      // app background
+val FintechSurface = Color(0xFF14161B)         // cards / sheets
+val FintechSurfaceCapsule = Color(0xFF1A1D24)  // segmented tracks, inset controls
+val FintechBorder = Color(0x12FFFFFF)          // rgba(255,255,255,0.07) hairline
+val FintechOnSurface = Color(0xFFF2F4F7)       // primary text on dark
+val FintechOnSurfaceVariant = Color(0xFF9BA1AC) // secondary text on dark
+
+// Accent green: primary numeric values, positive signals, chart strokes,
+// focus rings and small active-state indicator dots ONLY.
+val FintechAccentGreen = Color(0xFF00E676)
+
+// Semantic negative signal. Deliberately NOT the accent green: red stays the
+// only color allowed for downward moves on fintech dark surfaces.
+val FintechSignalRed = Color(0xFFFF5252)

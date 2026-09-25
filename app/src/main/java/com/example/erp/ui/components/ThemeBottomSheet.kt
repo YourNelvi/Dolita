@@ -1,7 +1,9 @@
 package com.example.erp.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,10 +37,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.erp.data.ThemeMode
 import com.example.erp.ui.theme.AppTheme
+import com.example.erp.ui.theme.accentColor
+import com.example.erp.ui.theme.cardBadgeColor
+import com.example.erp.ui.theme.cardBorderColor
+import com.example.erp.ui.theme.cardContainerColor
 
 @ExperimentalMaterial3Api
 @Composable
@@ -78,7 +86,7 @@ fun ThemeBottomSheetContent(
                     .weight(1f)
                     .height(4.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f))
             )
             Spacer(modifier = Modifier.width(12.dp))
             Box(
@@ -86,6 +94,7 @@ fun ThemeBottomSheetContent(
                     .size(40.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .border(1.dp, cardBorderColor(), CircleShape)
                     .clickable { onDismiss() },
                 contentAlignment = Alignment.Center
             ) {
@@ -134,8 +143,8 @@ fun ThemeBottomSheetContent(
                     onCheckedChange = { onDynamicColorChange(!currentDynamicColor) }
                 )
             }
-            androidx.compose.material3.Divider(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+            androidx.compose.material3.HorizontalDivider(
+                color = cardBorderColor()
             )
         }
 
@@ -164,8 +173,8 @@ fun ThemeBottomSheetContent(
                 onCheckedChange = { onHighPrecisionChange(!currentHighPrecision) }
             )
         }
-        androidx.compose.material3.Divider(
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+        androidx.compose.material3.HorizontalDivider(
+            color = cardBorderColor()
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -177,38 +186,64 @@ fun ThemeBottomSheetContent(
             fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(bottom = 8.dp)
         )
+        val modeInteractionSource = remember { MutableInteractionSource() }
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(1.dp, cardBorderColor(), RoundedCornerShape(50))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             ThemeMode.entries.forEach { mode ->
                 val isSelected = currentMode == mode
-                Box(
+                Column(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(
-                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                            else MaterialTheme.colorScheme.surfaceVariant
+                        .clip(RoundedCornerShape(50))
+                        .background(if (isSelected) cardBadgeColor() else Color.Transparent)
+                        .border(
+                            width = 1.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.outline
+                            else Color.Transparent,
+                            shape = RoundedCornerShape(50)
                         )
-                        .clickable { onModeChange(mode) }
-                        .padding(vertical = 12.dp, horizontal = 8.dp),
-                    contentAlignment = Alignment.Center
+                        .clickable(
+                            interactionSource = modeInteractionSource,
+                            indication = null
+                        ) { onModeChange(mode) }
+                        .padding(vertical = 10.dp, horizontal = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
                         text = mode.displayName,
                         style = MaterialTheme.typography.labelLarge,
-                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                        else MaterialTheme.colorScheme.onSurface,
+                        color = if (isSelected) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    // Subtle active-state indicator, grown rather than toggled.
+                    val modeIndicator by animateDpAsState(
+                        targetValue = if (isSelected) 16.dp else 0.dp,
+                        animationSpec = tween(MotionDurations.BASE, easing = Emphasized),
+                        label = "modeIndicator"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(modeIndicator)
+                            .height(2.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(accentColor())
                     )
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
-        androidx.compose.material3.Divider(
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+        androidx.compose.material3.HorizontalDivider(
+            color = cardBorderColor()
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -228,8 +263,9 @@ fun ThemeBottomSheetContent(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                .clip(RoundedCornerShape(16.dp))
+                .background(cardContainerColor())
+                .border(1.dp, cardBorderColor(), RoundedCornerShape(16.dp))
                 .clickable { showThemeDialog = true }
                 .padding(16.dp)
         ) {
@@ -308,8 +344,14 @@ private fun ThemeSelectionDialog(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(16.dp))
                             .background(
-                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                color = if (isSelected) MaterialTheme.colorScheme.surfaceVariant
+                                else Color.Transparent
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (isSelected) MaterialTheme.colorScheme.outline
+                                else cardBorderColor(),
+                                shape = RoundedCornerShape(16.dp)
                             )
                             .clickable { onThemeSelected(theme) }
                             .padding(16.dp),
@@ -344,7 +386,8 @@ private fun ThemeSelectionDialog(
                             Icon(
                                 imageVector = Icons.Filled.Check,
                                 contentDescription = "Seleccionado",
-                                tint = MaterialTheme.colorScheme.primary,
+                                // Active-state indicator -> accent.
+                                tint = accentColor(),
                                 modifier = Modifier.size(24.dp)
                             )
                         }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -30,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,18 +41,33 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.erp.data.DolarQuote
+import com.example.erp.ui.theme.accentColor
+import com.example.erp.ui.theme.cardBorder
+import com.example.erp.ui.theme.cardContainerColor
+import com.example.erp.ui.theme.positiveColor
 import kotlinx.coroutines.delay
 import java.math.BigDecimal
 import java.math.RoundingMode
+
+// Amount inputs are numeric: tabular figures keep digits aligned while typing.
+private val AmountTextStyle = TextStyle(
+    fontSize = 20.sp,
+    fontWeight = FontWeight.Medium,
+    fontFeatureSettings = "tnum"
+)
 
 private fun formatCalc(value: Double): String {
     val bd = BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP)
@@ -128,32 +145,39 @@ fun CalculatorCard(quote: DolarQuote?) {
         Toast.makeText(context, "$label copiado", Toast.LENGTH_SHORT).show()
     }
 
-    // Calcular valor inicial cuando cambia la tasa
-    LaunchedEffect(rate) {
-        if (!hasTyped && rate > 0.0) {
-            divDigits = "100"
-            val rateBD = BigDecimal.valueOf(rate)
-            vesDigits = toDigits(format(rateBD))
-        }
-    }
-
-    // Limpiar calculadora al cambiar de fuente
+    // Initialize once per source. Keyed on the source ONLY: a background rate
+    // refresh used to reset both fields, which wiped what the user was typing
+    // and made the focused field jump under the LazyColumn's bring-into-view.
     LaunchedEffect(quote.fuente) {
-        vesDigits = ""
-        divDigits = "100"
-        lastEdited = "div"
         hasTyped = false
-        if (rate > 0.0) {
-            val rateBD = BigDecimal.valueOf(rate)
-            vesDigits = toDigits(format(rateBD))
+        lastEdited = "div"
+        divDigits = "100"
+        vesDigits = if (rate > 0.0) toDigits(format(BigDecimal.valueOf(rate))) else ""
+    }
+
+    // A new rate re-prices the calculator but never touches the field being
+    // typed in: the user's digits are the source of truth, the rate is a
+    // multiplier.
+    LaunchedEffect(rate) {
+        if (rate <= 0.0) {
+            vesDigits = ""
+            return@LaunchedEffect
+        }
+        if (hasTyped) {
+            if (lastEdited == "ves") vesToDiv() else divToVes()
+        } else {
+            divDigits = "100"
+            vesDigits = toDigits(format(BigDecimal.valueOf(rate)))
         }
     }
 
+    // Fintech card: flat surface + hairline border, no M3 elevation.
     Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        ),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = cardContainerColor()),
+        border = cardBorder(),
+        // Fintech cards sit flat: no Material elevation/shadow.
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
@@ -163,11 +187,34 @@ fun CalculatorCard(quote: DolarQuote?) {
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(Modifier.height(4.dp))
-            Text(
-                text = if (rate > 0.0) "1 $shortName = ${formatCalc(rate)} Bs" else "Tasa no disponible",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            // Only the number rolls: "1 BCV =" and "Bs" stay put so the eye
+            // tracks the value, not the sentence.
+            if (rate > 0.0) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "1 $shortName =",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    TickerNumber(
+                        value = formatCalc(rate),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = accentColor(),
+                        modifier = Modifier.padding(horizontal = 5.dp)
+                    )
+                    Text(
+                        text = "Bs",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                Text(
+                    text = "Tasa no disponible",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Spacer(Modifier.height(16.dp))
 
             // Campo Bolívares con botón de copiar dentro
@@ -177,8 +224,14 @@ fun CalculatorCard(quote: DolarQuote?) {
                 onValueChange = { raw ->
                     if (!hasTyped) {
                         hasTyped = true
-                        vesDigits = ""
+                        // First keystroke replaces the prefilled default: keep only
+                        // the freshly typed digits (cursor is pinned to the end, so
+                        // the new input arrives appended to the current value).
+                        val fresh = raw.removePrefix(vesDigits).filter { it.isDigit() }.take(10)
+                        vesDigits = fresh
                         divDigits = ""
+                        lastEdited = "ves"
+                        vesToDiv()
                     } else {
                         vesDigits = raw.filter { it.isDigit() }.take(10)
                         lastEdited = "ves"
@@ -214,8 +267,12 @@ fun CalculatorCard(quote: DolarQuote?) {
                 onValueChange = { raw ->
                     if (!hasTyped) {
                         hasTyped = true
+                        // First keystroke replaces the prefilled default (see VES field).
+                        val fresh = raw.removePrefix(divDigits).filter { it.isDigit() }.take(10)
+                        divDigits = fresh
                         vesDigits = ""
-                        divDigits = ""
+                        lastEdited = "div"
+                        divToVes()
                     } else {
                         divDigits = raw.filter { it.isDigit() }.take(10)
                         lastEdited = "div"
@@ -263,9 +320,11 @@ private fun CopyIconButton(
     onReset: () -> Unit,
     contentDescription: String
 ) {
-    // Animación de color
+    // Copy confirmation: green check marks the active (copied) state, and a
+    // single tick confirms it in the hand before the eye catches up.
+    val haptics = LocalHapticFeedback.current
     val iconColor by animateColorAsState(
-        targetValue = if (copied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = if (copied) positiveColor() else MaterialTheme.colorScheme.onSurfaceVariant,
         animationSpec = tween(durationMillis = 300),
         label = "copyIconColor"
     )
@@ -279,7 +338,10 @@ private fun CopyIconButton(
     }
 
     IconButton(
-        onClick = onClick,
+        onClick = {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            onClick()
+        },
         modifier = Modifier.padding(0.dp)
     ) {
         AnimatedContent(
@@ -293,6 +355,8 @@ private fun CopyIconButton(
             Icon(
                 imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
                 contentDescription = contentDescription,
+                // Minimal copy affordance: 18dp glyph inside the 48dp touch target.
+                modifier = Modifier.size(18.dp),
                 tint = iconColor
             )
         }
@@ -313,6 +377,21 @@ private fun AmountField(
         label = { Text(label) },
         singleLine = true,
         trailingIcon = trailingIcon,
+        textStyle = AmountTextStyle,
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            // Clean inset box sitting on the fintech surface.
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+            // Quiet hairline at rest, accent focus ring while editing.
+            focusedBorderColor = accentColor(),
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+            focusedLabelColor = accentColor(),
+            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            cursorColor = accentColor()
+        ),
         keyboardOptions = KeyboardOptions(
             keyboardType = KeyboardType.Number,
             imeAction = androidx.compose.ui.text.input.ImeAction.Next

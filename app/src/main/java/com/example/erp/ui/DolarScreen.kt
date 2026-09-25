@@ -1,8 +1,21 @@
 package com.example.erp.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +31,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -34,12 +46,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -59,7 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -78,14 +87,24 @@ import com.example.erp.data.Error as AppError
 import com.example.erp.data.RateSample
 import com.example.erp.data.ThemeMode
 import com.example.erp.ui.components.CalculatorCard
+import com.example.erp.ui.components.Emphasized
+import com.example.erp.ui.components.Entrance
 import com.example.erp.ui.components.EvolutionChart
+import com.example.erp.ui.components.MotionDurations
+import com.example.erp.ui.components.PulseDot
+import com.example.erp.ui.components.ShimmerBox
 import com.example.erp.ui.components.ThemeBottomSheetContent
+import com.example.erp.ui.components.TickerNumber
 import com.example.erp.ui.theme.AppTheme
-import com.example.erp.ui.theme.DownRedDark
 import com.example.erp.ui.theme.DownRedLight
 import com.example.erp.ui.theme.ERPTheme
-import com.example.erp.ui.theme.UpGreenDark
-import com.example.erp.ui.theme.UpGreenLight
+import com.example.erp.ui.theme.FintechSignalRed
+import com.example.erp.ui.theme.accentColor
+import com.example.erp.ui.theme.positiveColor
+import com.example.erp.ui.theme.cardBadgeColor
+import com.example.erp.ui.theme.cardBorder
+import com.example.erp.ui.theme.cardBorderColor
+import com.example.erp.ui.theme.cardContainerColor
 import com.example.erp.ui.theme.isDarkTheme
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -119,11 +138,13 @@ private fun formatUpdated(value: String): String {
     }
 }
 
+// Positive signal: always green (independent of the palette accent).
 @Composable
-private fun trendColor(): Color = if (isDarkTheme()) UpGreenDark else UpGreenLight
+private fun trendColor(): Color = positiveColor()
 
+// Negative signal: always semantic red (never the accent green).
 @Composable
-private fun downColor(): Color = if (isDarkTheme()) DownRedDark else DownRedLight
+private fun downColor(): Color = if (isDarkTheme()) FintechSignalRed else DownRedLight
 
 @Composable
 fun DolarScreen(
@@ -154,16 +175,29 @@ fun DolarScreenContent(
     val currentDynamicColor by viewModel.dynamicColorEnabled.collectAsState(initial = false)
     val currentHighPrecision by viewModel.highPrecisionEnabled.collectAsState(initial = false)
     val isDynamicColorAvailable = Build.VERSION.SDK_INT >= 31 // Android 12+
+    // The refresh glyph completes one turn per fetch and parks there — a spin
+    // that keeps turning forever pretends to be working.
+    val refreshTurn by animateFloatAsState(
+        targetValue = if (uiState.loading) 1f else 0f,
+        animationSpec = if (uiState.loading) {
+            tween(durationMillis = 700, easing = LinearEasing)
+        } else {
+            androidx.compose.animation.core.snap()
+        },
+        label = "refreshTurn"
+    )
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
+            Entrance(index = 0) {
+                CenterAlignedTopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Rounded.CurrencyExchange,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            // Chrome stays neutral: the accent belongs to the numbers.
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(26.dp)
                         )
                         Spacer(Modifier.width(8.dp))
@@ -179,21 +213,23 @@ fun DolarScreenContent(
                         Icon(
                             imageVector = Icons.Rounded.Refresh,
                             contentDescription = "Actualizar",
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.rotate(refreshTurn * 360f)
                         )
                     }
                     IconButton(onClick = { showBottomSheet = true }) {
                         Icon(
                             imageVector = Icons.Rounded.Palette,
                             contentDescription = "Tema",
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent
                 )
-            )
+                )
+            }
         }
     ) { innerPadding ->
         val contentModifier = Modifier
@@ -203,12 +239,7 @@ fun DolarScreenContent(
 
         when {
             uiState.loading && uiState.quotes.isEmpty() -> {
-                Box(
-                    modifier = contentModifier,
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
+                LoadingSkeleton(modifier = contentModifier)
             }
 
             uiState.error != null && uiState.quotes.isEmpty() -> {
@@ -231,8 +262,22 @@ fun DolarScreenContent(
             }
         }
 
-        // Custom Bottom Sheet Overlay
-        if (showBottomSheet) {
+        // Custom Bottom Sheet Overlay — rises from the bottom edge and settles,
+        // exits the same way instead of blinking out of existence.
+        AnimatedVisibility(
+            visible = showBottomSheet,
+            enter = fadeIn(
+                animationSpec = tween(MotionDurations.BASE, easing = Emphasized)
+            ) + slideInVertically(
+                animationSpec = tween(MotionDurations.SLOW, easing = Emphasized),
+                initialOffsetY = { it / 3 }
+            ),
+            exit = fadeOut(animationSpec = tween(MotionDurations.FAST)) +
+                slideOutVertically(
+                    animationSpec = tween(MotionDurations.BASE, easing = Emphasized),
+                    targetOffsetY = { it / 3 }
+                )
+        ) {
             // Back button closes the sheet instead of exiting the app
             BackHandler { showBottomSheet = false }
             Box(
@@ -245,9 +290,11 @@ fun DolarScreenContent(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { /* consume clicks */ }
+                        // Clip must wrap the background, otherwise the sheet's
+                        // rounded top corners would be drawn over a square fill.
+                        .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                         .background(MaterialTheme.colorScheme.surface)
-                        .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                        .clickable { /* consume clicks */ }
                 ) {
                     ThemeBottomSheetContent(
                         currentTheme = currentTheme,
@@ -274,6 +321,46 @@ fun DolarScreenContent(
                 }
             }
         }
+    }
+}
+
+/**
+ * Loading state that mirrors the real layout: a rate board of the right shape,
+ * not a spinner floating in a void. The silhouette stays stable so nothing
+ * jumps when the data lands.
+ */
+@Composable
+private fun LoadingSkeleton(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        ShimmerBox(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(230.dp),
+            shape = RoundedCornerShape(16.dp)
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            ShimmerBox(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(96.dp),
+                shape = RoundedCornerShape(16.dp)
+            )
+            ShimmerBox(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(96.dp),
+                shape = RoundedCornerShape(16.dp)
+            )
+        }
+        ShimmerBox(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp),
+            shape = RoundedCornerShape(16.dp)
+        )
     }
 }
 
@@ -331,13 +418,43 @@ private fun DolarContent(
     val selected = uiState.quotes.firstOrNull { it.fuente == uiState.selectedFuente }
         ?: uiState.quotes.firstOrNull()
 
+    // The launch sequence lives here, on the container: one reveal for the whole
+    // board, 60ms behind the top bar. Animating individual items would replay
+    // every time they re-enter the viewport.
+    Entrance(index = 1) {
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            FeaturedCard(quote = selected, highPrecision = highPrecision, futureQuote = uiState.futureQuote)
+            // Switching casa crossfades the board instead of hard-swapping it.
+            // No Entrance() here on purpose: per-item entrance animations
+            // re-run every time an item scrolls back into view, which reads as
+            // the list sticking under your thumb.
+            AnimatedContent(
+                targetState = selected,
+                // contentKey on the SOURCE, not on the quote object: a rate
+                // refresh hands us a brand new DolarQuote every time, and
+                // re-running the crossfade on each of those made the whole page
+                // shift under the reader. Only a real source switch animates.
+                contentKey = { it?.fuente },
+                transitionSpec = {
+                    (fadeIn(
+                        animationSpec = tween(MotionDurations.BASE, easing = Emphasized)
+                    ) + slideInVertically(
+                        animationSpec = tween(MotionDurations.BASE, easing = Emphasized)
+                    ) { it / 10 })
+                        .togetherWith(fadeOut(animationSpec = tween(MotionDurations.FAST)))
+                },
+                label = "heroSwap"
+            ) { quote ->
+                FeaturedCard(
+                    quote = quote,
+                    highPrecision = highPrecision,
+                    futureQuote = uiState.futureQuote
+                )
+            }
         }
 
         // Proxima tasa (si el API ya publico la de manana)
@@ -412,34 +529,28 @@ private fun DolarContent(
                 )
         }
     }
+    }
 }
 
 @Composable
 private fun FeaturedCard(quote: DolarQuote?, highPrecision: Boolean = false, futureQuote: DolarQuote? = null) {
     if (quote == null) return
-    val primary = MaterialTheme.colorScheme.primary
-    val shape = RoundedCornerShape(28.dp)
+    val shape = RoundedCornerShape(20.dp)
     val fracDigits = if (highPrecision) 4 else 2
     val featPriceFormatter = NumberFormat.getNumberInstance(Locale.getDefault()).apply {
         minimumFractionDigits = fracDigits
         maximumFractionDigits = fracDigits
     }
     fun featFormatPrice(value: Double): String = "$${featPriceFormatter.format(value)}"
+    // Fintech hero card: flat surface + hairline border (no M3 elevation, no
+    // full-background color fill). The accent green is spent on the big number.
     Card(
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        primary.copy(alpha = 0.9f),
-                        primary.copy(alpha = 0.55f)
-                    )
-                ),
-                shape = shape
-            )
+        colors = CardDefaults.cardColors(containerColor = cardContainerColor()),
+        border = cardBorder(),
+        // Fintech cards sit flat: no Material elevation/shadow.
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier
@@ -450,20 +561,24 @@ private fun FeaturedCard(quote: DolarQuote?, highPrecision: Boolean = false, fut
             Text(
                 text = quote.nombre,
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onPrimary,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(Modifier.height(10.dp))
-            Text(
-                text = featFormatPrice(quote.promedio),
+            // The signature moment: the rate rolls into place like a board
+            // instead of blinking between two values.
+            TickerNumber(
+                value = featFormatPrice(quote.promedio),
                 style = MaterialTheme.typography.displayLarge,
-                color = MaterialTheme.colorScheme.onPrimary
+                color = accentColor(),
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(16.dp))
 
             Surface(
                 shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.22f),
+                color = cardBadgeColor(),
                 modifier = Modifier.clip(RoundedCornerShape(50))
             ) {
                 Row(
@@ -471,19 +586,22 @@ private fun FeaturedCard(quote: DolarQuote?, highPrecision: Boolean = false, fut
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     quote.variacion?.let { variacion ->
-                        TrendIcon(variacion, MaterialTheme.colorScheme.onPrimary)
+                        val signalColor = if (variacion >= 0) trendColor() else downColor()
+                        TrendIcon(variacion, signalColor)
                         Spacer(Modifier.width(6.dp))
                         Text(
                             text = "${if (variacion >= 0) "+" else ""}${"%.2f".format(variacion)}%",
-                            color = MaterialTheme.colorScheme.onPrimary,
+                            color = signalColor,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(Modifier.width(10.dp))
                     }
+                    PulseDot(color = positiveColor())
+                    Spacer(Modifier.width(6.dp))
                     Text(
                         text = "Act. ${formatUpdated(quote.fechaActualizacion)}",
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelMedium
                     )
                 }
@@ -523,13 +641,13 @@ private fun FeaturedStat(label: String, value: String) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(2.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onPrimary,
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold
         )
     }
@@ -541,7 +659,7 @@ private fun FeaturedStatColored(label: String, value: String, color: Color) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(2.dp))
         Text(
@@ -565,22 +683,21 @@ private fun ProximaTasaCard(
         minimumFractionDigits = fracDigits
         maximumFractionDigits = fracDigits
     }
-    val containerColor = if (isActive)
-        MaterialTheme.colorScheme.tertiaryContainer
-    else
-        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
-    val borderColor = if (isActive)
-        MaterialTheme.colorScheme.tertiary
-    else
-        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f)
+    // Thin 1dp hairline in every state; the accent border only marks the
+    // active toggle, so the card reads as a control and not a colored banner.
+    val borderColor = if (isActive) accentColor() else cardBorderColor()
+    val titleColor = if (isActive) accentColor() else MaterialTheme.colorScheme.onSurface
+    val valueColor = if (isActive) accentColor() else MaterialTheme.colorScheme.onSurface
 
     Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = cardContainerColor()),
         border = androidx.compose.foundation.BorderStroke(
-            width = if (isActive) 2.dp else 0.dp,
+            width = 1.dp,
             color = borderColor
         ),
+        // Fintech cards sit flat: no Material elevation/shadow.
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         onClick = onClick,
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -596,7 +713,7 @@ private fun ProximaTasaCard(
                     text = if (isActive) "Usando tasa futura" else "Proxima tasa",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.tertiary
+                    color = titleColor
                 )
                 Text(
                     text = formatUpdated(future.fechaActualizacion),
@@ -608,38 +725,80 @@ private fun ProximaTasaCard(
                 text = "$${fmt.format(future.promedio)}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.tertiary
+                color = valueColor
             )
         }
     }
 }
 
+/**
+ * Source selector as a fintech capsule segmented control: shared track with a
+ * hairline border, a contrasting active item and a small accent indicator dot
+ * bar. Replaces the Material FilterChip row (no ripple, no tonal fills).
+ */
 @Composable
 private fun CasaChips(
     quotes: List<DolarQuote>,
     selectedCasa: String,
     onSelect: (String) -> Unit
 ) {
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(horizontal = 4.dp)
+    val trackShape = RoundedCornerShape(50)
+    val interactionSource = remember { MutableInteractionSource() }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(trackShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, cardBorderColor(), trackShape)
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        items(quotes, key = { it.fuente }) { quote ->
-            FilterChip(
-                selected = quote.fuente == selectedCasa,
-                onClick = { onSelect(quote.fuente) },
-                label = {
-                    Text(
-                        text = quote.nombre,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Medium
+        quotes.forEach { quote ->
+            val selected = quote.fuente == selectedCasa
+            val activeBackground =
+                if (isDarkTheme()) Color.White.copy(alpha = 0.08f) else Color.White
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(trackShape)
+                    .background(if (selected) activeBackground else Color.Transparent)
+                    .border(
+                        width = 1.dp,
+                        color = if (selected) Color.White.copy(alpha = 0.12f) else Color.Transparent,
+                        shape = trackShape
                     )
-                },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null
+                    ) { onSelect(quote.fuente) }
+                    .padding(vertical = 8.dp, horizontal = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = quote.nombre,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    color = if (selected) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
                 )
-            )
+                Spacer(Modifier.height(5.dp))
+                // Subtle active-state indicator under the selected segment: it
+                // slides out from nothing instead of popping into existence.
+                val indicatorWidth by animateDpAsState(
+                    targetValue = if (selected) 16.dp else 0.dp,
+                    animationSpec = tween(MotionDurations.BASE, easing = Emphasized),
+                    label = "casaIndicator"
+                )
+                Box(
+                    modifier = Modifier
+                        .width(indicatorWidth)
+                        .height(2.dp)
+                        .clip(trackShape)
+                        .background(accentColor())
+                )
+            }
         }
     }
 }
@@ -658,10 +817,11 @@ private fun HistoricoChartCard(samples: List<com.example.erp.data.RateSample>) {
         "Últimos 15 días (toca un punto para ver precio)"
 
     Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        ),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = cardContainerColor()),
+        border = cardBorder(),
+        // Fintech cards sit flat: no Material elevation/shadow.
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
@@ -686,10 +846,11 @@ private fun HistoricoChartCard(samples: List<com.example.erp.data.RateSample>) {
 @Composable
 private fun SinDatosCard() {
     Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        ),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = cardContainerColor()),
+        border = cardBorder(),
+        // Fintech cards sit flat: no Material elevation/shadow.
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -748,10 +909,11 @@ private fun CalendarLookupSection(
     } }
 
     Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        ),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = cardContainerColor()),
+        border = cardBorder(),
+        // Fintech cards sit flat: no Material elevation/shadow.
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
@@ -793,9 +955,21 @@ private fun CalendarLookupSection(
                 Spacer(Modifier.height(12.dp))
                 val sample = uiState.selectedDateRate
                 if (sample != null) {
+                    // The row grows into place so the tap that produced it has a
+                    // visible consequence.
+                    AnimatedVisibility(
+                        visible = true,
+                        enter = fadeIn(
+                            animationSpec = tween(MotionDurations.BASE, easing = Emphasized)
+                        ) + expandVertically(
+                            animationSpec = tween(MotionDurations.SLOW, easing = Emphasized)
+                        )
+                    ) {
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                        shape = RoundedCornerShape(12.dp),
+                        // Nested inset control: capsule fill + hairline border.
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, cardBorderColor())
                     ) {
                         Row(
                             modifier = Modifier
@@ -816,11 +990,11 @@ private fun CalendarLookupSection(
                                 )
                             }
                             Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = "$${priceFmt.format(sample.precio)}",
+                                TickerNumber(
+                                    value = "$${priceFmt.format(sample.precio)}",
                                     style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = accentColor(),
+                                    textAlign = TextAlign.End
                                 )
                                 sample.variacion?.let { variacion ->
                                     val signo = if (variacion >= 0) "+" else ""
@@ -835,11 +1009,13 @@ private fun CalendarLookupSection(
                             }
                         }
                     }
+                    }
                 } else {
                     // Sin datos para esa fecha
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, cardBorderColor())
                     ) {
                         Row(
                             modifier = Modifier
@@ -936,10 +1112,11 @@ private fun HistoricoTableHeader() {
 @Composable
 private fun HistoricoRowItem(row: HistoricoRow) {
     Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-        ),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = cardContainerColor()),
+        border = cardBorder(),
+        // Fintech cards sit flat: no Material elevation/shadow.
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -993,14 +1170,15 @@ private fun QuoteRow(
     onClick: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-            }
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = cardContainerColor()),
+        // Selected rows are marked with an accent hairline instead of a tonal fill.
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (selected) accentColor().copy(alpha = 0.55f) else cardBorderColor()
         ),
+        // Fintech cards sit flat: no Material elevation/shadow.
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         onClick = onClick,
         modifier = Modifier.fillMaxWidth()
     ) {

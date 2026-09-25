@@ -1,5 +1,7 @@
 package com.example.erp.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -16,9 +19,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
@@ -26,6 +33,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.erp.data.RateSample
+import com.example.erp.ui.theme.DownRedLight
+import com.example.erp.ui.theme.FintechSignalRed
+import com.example.erp.ui.theme.accentColor
+import com.example.erp.ui.theme.positiveColor
+import com.example.erp.ui.theme.isDarkTheme
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.ZoneId
@@ -33,6 +45,27 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.min
+
+/** Negative signal red, shared with the quote list so both read identically. */
+@Composable
+private fun negativeColor(): Color =
+    if (isDarkTheme()) FintechSignalRed else DownRedLight
+
+/**
+ * Builds a smooth cubic (Bézier) spline through [points] using horizontal
+ * control handles, so the series renders as a curve instead of straight
+ * segments. One point draws nothing (a lone moveTo is not a visible stroke).
+ */
+private fun Path.addSmoothSpline(points: List<Offset>) {
+    if (points.isEmpty()) return
+    moveTo(points.first().x, points.first().y)
+    for (i in 0 until points.size - 1) {
+        val start = points[i]
+        val end = points[i + 1]
+        val handle = (end.x - start.x) * 0.4f
+        cubicTo(start.x + handle, start.y, end.x - handle, end.y, end.x, end.y)
+    }
+}
 
 @Composable
 fun EvolutionChart(
@@ -76,12 +109,36 @@ fun EvolutionChart(
 
     var selectedIndex by remember { mutableStateOf(-1) }
 
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+    // The series draws itself in from the left whenever the data changes, so a
+    // refresh reads as the chart re-measuring the rate rather than as a repaint.
+    val reveal = remember { Animatable(1f) }
+    val reducedMotion = rememberReducedMotion()
+    LaunchedEffect(sorted.size, sorted.lastOrNull()?.timestampEpochMillis, sorted.lastOrNull()?.precio) {
+        if (reducedMotion) {
+            reveal.snapTo(1f)
+        } else {
+            reveal.snapTo(0f)
+            reveal.animateTo(1f, animationSpec = tween(700, easing = Emphasized))
+        }
+    }
+    val revealFraction = reveal.value
+
     val onSurface = MaterialTheme.colorScheme.onSurface
-    val tertiaryColor = MaterialTheme.colorScheme.tertiary
-    val errorColor = MaterialTheme.colorScheme.error
     val outlineColor = MaterialTheme.colorScheme.outline
+
+    // Stroke semantics: green (positiveColor) only for a positive series,
+    // semantic red for a negative one, and the palette accent when flat.
+    // Captured up front because the Canvas draw lambda is not composable.
+    val accent = accentColor()
+    val positive = positiveColor()
+    val negative = negativeColor()
+    val firstPrice = sorted.first().precio
+    val lastPrice = sorted.last().precio
+    val strokeColor = when {
+        lastPrice > firstPrice -> positive
+        lastPrice < firstPrice -> negative
+        else -> lineColor
+    }
 
     val density = LocalDensity.current
     val textSizePx = with(density) { 12.sp.toPx() }
@@ -165,49 +222,66 @@ fun EvolutionChart(
                 Offset(x, y)
             }
 
-            // Dibujar area bajo la curva
+            // Area fill under the spline: accent tint at the curve fading to
+            // fully transparent at the baseline (vertical gradient).
+            val baseY = padding + chartHeight
             val areaPath = Path().apply {
-                moveTo(points.first().x, padding + chartHeight)
-                points.forEach { lineTo(it.x, it.y) }
-                lineTo(points.last().x, padding + chartHeight)
+                addSmoothSpline(points)
+                lineTo(points.last().x, baseY)
+                lineTo(points.first().x, baseY)
                 close()
             }
-            drawPath(
-                path = areaPath,
-                color = primaryColor.copy(alpha = 0.08f)
-            )
+            // Guard against a zero-height gradient when the series is flat at
+            // the very bottom of the plot area.
+            val gradientTop = min(points.minOf { it.y }, baseY - 1f)
+            // Reveal the whole plot from the left edge in step with the line.
+            val revealRight = padding + (canvasWidth - padding * 2) * revealFraction
+            clipRect(left = 0f, top = 0f, right = revealRight, bottom = canvasHeight) {
+                drawPath(
+                    path = areaPath,
+                    brush = Brush.verticalGradient(
+                        startY = gradientTop,
+                        endY = baseY,
+                        colors = listOf(
+                            strokeColor.copy(alpha = 0.30f),
+                            strokeColor.copy(alpha = 0f)
+                        )
+                    )
+                )
 
-            // Dibujar linea
-            val linePath = Path().apply {
-                moveTo(points.first().x, points.first().y)
-                for (i in 1 until points.size) {
-                    lineTo(points[i].x, points[i].y)
-                }
-            }
-            drawPath(
-                path = linePath,
-                color = primaryColor,
-                style = Stroke(width = 2.5f)
-            )
+                // Line: smooth cubic spline. Compose paints are built with
+                // Paint.ANTI_ALIAS_FLAG, so drawPath is antialiased by default.
+                val linePath = Path().apply { addSmoothSpline(points) }
+                drawPath(
+                    path = linePath,
+                    color = strokeColor,
+                    style = Stroke(
+                        width = 2.5f,
+                        cap = StrokeCap.Round,
+                        join = StrokeJoin.Round
+                    )
+                )
 
-            // Dibujar puntos
+            // Data points: semantic per-sample colors, green only for
+            // positive samples.
             points.forEachIndexed { idx, pt ->
                 val isSelected = idx == selectedIndex
                 val radius = if (isSelected) 6f else 3.5f
                 val sample = sorted[idx]
                 val dotColor = when {
-                    isSelected -> primaryColor
-                    sample.variacion != null && sample.variacion >= 0 -> tertiaryColor
-                    sample.variacion != null && sample.variacion < 0 -> errorColor
-                    else -> primaryColor
+                    isSelected -> strokeColor
+                    sample.variacion != null && sample.variacion >= 0 -> positive
+                    sample.variacion != null && sample.variacion < 0 -> negative
+                    else -> strokeColor
                 }
                 drawCircle(color = dotColor, radius = radius, center = pt)
                 if (isSelected) {
                     drawCircle(
-                        color = primaryColor.copy(alpha = 0.25f),
+                        color = strokeColor.copy(alpha = 0.25f),
                         radius = 12f,
                         center = pt
                     )
+                }
                 }
             }
 
@@ -241,8 +315,8 @@ fun EvolutionChart(
             }
             val varColor = when {
                 sample.variacion == null -> onSurface
-                sample.variacion >= 0 -> tertiaryColor
-                else -> errorColor
+                sample.variacion >= 0 -> positive
+                else -> negative
             }
 
             Box(
@@ -263,7 +337,8 @@ fun EvolutionChart(
                         text = priceStr,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                        color = primaryColor
+                        // Primary numeric value -> accent.
+                        color = accent
                     )
                     varStr?.let {
                         Text(

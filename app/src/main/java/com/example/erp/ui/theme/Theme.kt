@@ -1,6 +1,9 @@
 package com.example.erp.ui.theme
 
 import android.os.Build
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -15,9 +18,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 
 // CompositionLocal para saber si el tema actual es oscuro
 val LocalIsDarkTheme = staticCompositionLocalOf { false }
+
+// The animated palette accent, published by ERPTheme. See accentColor().
+val LocalAccentColor = staticCompositionLocalOf { Color(0xFF00E676) }
 
 enum class AppTheme(
     val lightPrimary: Long, val lightSecondary: Long, val lightTertiary: Long,
@@ -88,17 +95,74 @@ private fun lightScheme(t: AppTheme) = lightColorScheme(
 private fun darkScheme(t: AppTheme) = darkColorScheme(
     primary = Color(t.darkPrimary),
     onPrimary = Color(t.darkOnPrimary),
+    // Selected-state containers become accent-tinted instead of M3 tonal fills.
+    primaryContainer = Color(t.darkPrimary).copy(alpha = 0.16f),
+    onPrimaryContainer = Color(t.darkPrimary),
     secondary = Color(t.darkSecondary),
     onSecondary = Color(t.darkOnSecondary),
     tertiary = Color(t.darkTertiary),
     onTertiary = Color(t.darkOnTertiary),
-    surface = Color(0xFF121212),
-    onSurface = Color.White,
-    background = Color(0xFF121212),
-    onBackground = Color.White,
+    tertiaryContainer = FintechSurfaceCapsule,
+    onTertiaryContainer = Color(t.darkTertiary),
+    background = FintechBackground,
+    onBackground = FintechOnSurface,
+    surface = FintechSurface,
+    onSurface = FintechOnSurface,
+    surfaceVariant = FintechSurfaceCapsule,
+    onSurfaceVariant = FintechOnSurfaceVariant,
+    surfaceContainerLowest = FintechBackground,
+    surfaceContainerLow = FintechBackground,
+    surfaceContainer = FintechSurface,
+    surfaceContainerHigh = FintechSurface,
+    surfaceContainerHighest = FintechSurfaceCapsule,
+    surfaceBright = FintechSurface,
+    surfaceDim = FintechBackground,
+    outline = FintechOnSurfaceVariant.copy(alpha = 0.55f),
+    outlineVariant = FintechBorder,
     error = Color(0xFFCF6679),
     onError = Color.Black
 )
+
+// --- Fintech surface helpers (shared visual tokens for cards, inputs and sheets) ---
+
+/** Card/input container: fintech surface on dark, previous tonal card look on light. */
+@Composable
+fun cardContainerColor(): Color =
+    if (isDarkTheme()) FintechSurface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+
+/** Hairline card border: rgba(255,255,255,0.07) on dark, soft dark outline on light. */
+@Composable
+fun cardBorderColor(): Color =
+    if (isDarkTheme()) FintechBorder else Color.Black.copy(alpha = 0.10f)
+
+/** 1dp hairline border stroke for fintech cards. */
+@Composable
+fun cardBorder(): BorderStroke = BorderStroke(1.dp, cardBorderColor())
+
+/**
+ * Accent for primary numeric values / focus rings.
+ *
+ * The transition between palettes is animated ONCE in `ERPTheme` and published
+ * here. Every call site just reads a composition local — when each call site ran
+ * its own `animateColorAsState`, every list row spun up its own animator and
+ * recomposed the row on each frame of the transition.
+ */
+@Composable
+fun accentColor(): Color = LocalAccentColor.current
+
+/**
+ * Semantic positive signal (up deltas, rising series, confirmations):
+ * fintech green on dark, palette green on light — never follows the accent,
+ * so "green = up" holds regardless of the selected theme.
+ */
+@Composable
+fun positiveColor(): Color = if (isDarkTheme()) FintechAccentGreen else UpGreenLight
+
+/** Quiet pill/badge fill (variation chips, active states): translucent white on dark, soft tint on light. */
+@Composable
+fun cardBadgeColor(): Color =
+    if (isDarkTheme()) Color.White.copy(alpha = 0.07f)
+    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
 
 @Composable
 fun ERPTheme(
@@ -119,7 +183,16 @@ fun ERPTheme(
     }
 
     val isDark = effectiveDarkTheme
-    CompositionLocalProvider(LocalIsDarkTheme provides isDark) {
+    // One animator for the whole tree, instead of one per accent call site.
+    val animatedAccent by animateColorAsState(
+        targetValue = colorScheme.primary,
+        animationSpec = tween(durationMillis = 350),
+        label = "accentTransition"
+    )
+    CompositionLocalProvider(
+        LocalIsDarkTheme provides isDark,
+        LocalAccentColor provides animatedAccent
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,
