@@ -93,9 +93,14 @@ fun CalculatorCard(
      * buys are not. It is a personal outcome, not a market statistic, so the
      * difference wears direction colors — unlike the spread in the hero, which
      * is a fact about the market and stays neutral.
+     *
+     * USD only. The parallel quote is a USD/VES rate, so applying it to one
+     * euro would price 1 EUR as if it were 1 USD. A cross rate could be
+     * derived from the two official prices, but nobody trades that implied
+     * number and quoting it would invent precision the market does not have.
      */
     val parallelRate = parallelQuote?.promedio?.takeIf {
-        quote.fuente != "usdt" && it > 0.0 && rate > 0.0
+        quote.fuente == "usd" && it > 0.0 && rate > 0.0
     }
     var lastEdited by remember { mutableStateOf("ves") }
     // Estado: solo dígitos puros (ej: "1234" = 1234,00)
