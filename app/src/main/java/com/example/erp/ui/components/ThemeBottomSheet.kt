@@ -42,6 +42,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.ui.platform.LocalContext
@@ -77,6 +79,9 @@ fun ThemeBottomSheetContent(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            // The settings list outgrew a phone screen. Without a scroll the
+            // bottom of it was simply unreachable.
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = horizontalPadding)
             .padding(top = 16.dp, bottom = 24.dp)
     ) {
@@ -314,23 +319,23 @@ fun ThemeBottomSheetContent(
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(20.dp))
+        androidx.compose.material3.HorizontalDivider(
+            color = cardBorderColor()
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = "PREFERENCIAS",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        PriceAlertSection()
     }
-
-    Spacer(modifier = Modifier.height(20.dp))
-    androidx.compose.material3.HorizontalDivider(
-        color = cardBorderColor()
-    )
-    Spacer(modifier = Modifier.height(12.dp))
-
-    Text(
-        text = "PREFERENCIAS",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-
-    Spacer(modifier = Modifier.height(4.dp))
-
-    PriceAlertSection()
 
     // Theme Selection Dialog
     if (showThemeDialog) {
