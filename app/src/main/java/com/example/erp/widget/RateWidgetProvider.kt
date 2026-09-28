@@ -10,6 +10,7 @@ import com.example.erp.MainActivity
 import com.example.erp.R
 import com.example.erp.data.ApiDolarRepository
 import com.example.erp.data.CachedDolarRepository
+import com.example.erp.data.FileHistoryStore
 import com.example.erp.data.QuotesCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +41,10 @@ class RateWidgetProvider : AppWidgetProvider() {
                 updateWidget(context, manager, id)
             }
         }
+
+        private const val SPARKLINE_SAMPLES = 24
+        private const val SPARKLINE_WIDTH_PX = 320
+        private const val SPARKLINE_HEIGHT_PX = 56
 
         private fun updateWidget(
             context: Context,
@@ -95,6 +100,28 @@ class RateWidgetProvider : AppWidgetProvider() {
                     val now = java.time.LocalTime.now()
                         .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
                     views.setTextViewText(R.id.widget_updated, "Act. $now")
+
+                    // The trend comes from the stored history, never from
+                    // another request.
+                    val history = runCatching {
+                        FileHistoryStore(
+                            dir = context.applicationContext.filesDir.resolve("rate_history"),
+                            zoneId = java.time.ZoneId.systemDefault()
+                        )
+                    }.getOrNull()?.let { store ->
+                        runCatching { store.readCurrentYear() }.getOrDefault(emptyList())
+                    } ?: emptyList()
+
+                    val usdHistory = history.filter { it.fuente == "usd" }
+                        .sortedBy { it.timestampEpochMillis }
+                        .takeLast(SPARKLINE_SAMPLES)
+                        .map { it.precio }
+                    val sparkline = WidgetSparkline.render(
+                        usdHistory,
+                        SPARKLINE_WIDTH_PX,
+                        SPARKLINE_HEIGHT_PX
+                    )
+                    views.setImageViewBitmap(R.id.widget_sparkline, sparkline)
 
                     manager.updateAppWidget(appWidgetId, views)
                 } catch (e: Exception) {

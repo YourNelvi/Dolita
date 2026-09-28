@@ -86,6 +86,16 @@
             android:textStyle="bold" />
     </LinearLayout>
 
+    <!-- Sparkline: RemoteViews cannot draw, so the worker renders a bitmap
+         and assigns it here. Shows the shape of the last stored samples. -->
+    <ImageView
+        android:id="@+id/widget_sparkline"
+        android:layout_width="match_parent"
+        android:layout_height="28dp"
+        android:layout_marginBottom="8dp"
+        android:scaleType="fitXY"
+        android:contentDescription="Tendencia reciente" />
+
     <!-- Updated at -->
     <TextView
         android:id="@+id/widget_updated"
