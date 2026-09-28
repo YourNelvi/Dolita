@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -57,6 +58,7 @@ import com.example.erp.data.CurrencyConverter
 import com.example.erp.data.DolarQuote
 import com.example.erp.ui.theme.accentColor
 import com.example.erp.ui.theme.cardBorder
+import com.example.erp.ui.theme.cardBorderColor
 import com.example.erp.ui.theme.cardContainerColor
 import kotlinx.coroutines.delay
 import java.math.BigDecimal
@@ -78,10 +80,23 @@ private fun formatCalc(value: Double): String {
 }
 
 @Composable
-fun CalculatorCard(quote: DolarQuote?) {
+fun CalculatorCard(
+    quote: DolarQuote?,
+    parallelQuote: DolarQuote? = null
+) {
     if (quote == null) return
     val rate = quote.promedio
     val shortName = quote.fuente.uppercase()
+    /**
+     * The same amount priced at the parallel market. This is the comparison a
+     * Bolivian actually makes: the bolivar amount is fixed, but the dollars it
+     * buys are not. It is a personal outcome, not a market statistic, so the
+     * difference wears direction colors — unlike the spread in the hero, which
+     * is a fact about the market and stays neutral.
+     */
+    val parallelRate = parallelQuote?.promedio?.takeIf {
+        quote.fuente != "usdt" && it > 0.0 && rate > 0.0
+    }
     var lastEdited by remember { mutableStateOf("ves") }
     // Estado: solo dígitos puros (ej: "1234" = 1234,00)
     var vesDigits by remember { mutableStateOf("") }
@@ -266,6 +281,72 @@ fun CalculatorCard(quote: DolarQuote?) {
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            // The same money, priced at the parallel market.
+            if (parallelRate != null) {
+                val editingBolivares = lastEdited == "ves"
+                val entered = if (editingBolivares) {
+                    CurrencyConverter.parseDigits(vesDigits)
+                } else {
+                    CurrencyConverter.parseDigits(divDigits)
+                }
+                if (entered != null && entered > BigDecimal.ZERO) {
+                    // Direction matters: bolivar input divides down into dollars,
+                    // currency input multiplies up into bolivars. Getting this
+                    // backwards is how 1,00 USD turned into "Bs 0,00".
+                    fun convert(amount: BigDecimal, rateValue: Double): BigDecimal =
+                        if (editingBolivares) {
+                            amount.divide(BigDecimal.valueOf(rateValue), 6, RoundingMode.HALF_UP)
+                        } else {
+                            amount.multiply(BigDecimal.valueOf(rateValue))
+                        }
+
+                    val atSelected = convert(entered, rate)
+                    val atParallel = convert(entered, parallelRate)
+                    val difference = atSelected.subtract(atParallel).abs()
+                    val unit = if (editingBolivares) "USD" else "Bs"
+
+                    Spacer(Modifier.height(14.dp))
+                    androidx.compose.material3.HorizontalDivider(
+                        color = cardBorderColor()
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Al paralelo",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = if (editingBolivares) {
+                                "Bs ${CurrencyConverter.format(entered)} → $${CurrencyConverter.format(atParallel)}"
+                            } else {
+                                "$${CurrencyConverter.format(entered)} → Bs ${CurrencyConverter.format(atParallel)}"
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        // The same money, worse rate: fewer dollars to buy, or
+                        // more bolivars to pay. Either way the user is worse off,
+                        // so this wears the negative signal on purpose.
+                        text = if (editingBolivares) {
+                            "Te quedan $unit menos: ${CurrencyConverter.format(difference)}"
+                        } else {
+                            "Te cuesta $unit más: ${CurrencyConverter.format(difference)}"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = com.example.erp.ui.theme.DownRedLight
+                    )
+                }
+            }
         }
     }
 }

@@ -114,6 +114,7 @@ import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.abs
 import android.os.Build
 
 private val priceFormatter = NumberFormat.getNumberInstance(Locale.getDefault()).apply {
@@ -496,7 +497,12 @@ private fun DolarContent(
             } else {
                 selected
             }
-            calcQuote?.let { CalculatorCard(quote = it) }
+            calcQuote?.let { quote ->
+                CalculatorCard(
+                    quote = quote,
+                    parallelQuote = uiState.quotes.firstOrNull { it.fuente == "usdt" }
+                )
+            }
         }
 
         item { SectionHeader("Histórico") }
@@ -631,6 +637,9 @@ private fun FeaturedCard(
             // Only the parallel market has a gap worth stating, and only while
             // both rates are known.
             spreadPercent?.let { spread ->
+                val gapPerDollar = spreadPercent?.let { percent ->
+                    officialUsdRate?.let { it * percent / 100.0 }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "${if (spread >= 0) "+" else ""}${"%.2f".format(spread)}%",
@@ -641,6 +650,14 @@ private fun FeaturedCard(
                     Spacer(Modifier.width(6.dp))
                     Text(
                         text = "sobre el oficial",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                gapPerDollar?.let { gap ->
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "Son ${featFormatPrice(abs(gap))} por dólar",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
