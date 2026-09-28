@@ -143,8 +143,8 @@ android {
         applicationId = "com.example.erp"
         minSdk = 30
         targetSdk = 37
-        versionCode = 1019004
-        versionName = "1.22.0"
+        versionCode = 1019005
+        versionName = "1.22.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
