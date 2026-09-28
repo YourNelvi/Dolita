@@ -91,13 +91,20 @@ open class DolarViewModel @JvmOverloads constructor(
                     com.example.erp.data.QuotesCache.getCached(getApplication())
                 }.getOrNull()
                 val age = cached?.let { System.currentTimeMillis() - it.timestamp } ?: Long.MAX_VALUE
+                // "Fresh" is not enough: the BCV worker writes only usd+eur, so a
+                // recent cache can be missing the parallel market entirely. A
+                // snapshot that cannot fill every tab the UI offers is not a
+                // snapshot worth rendering — that is what made the USDT tab
+                // disappear until the hourly worker happened to run.
+                val sources = cached?.quotes?.map { it.fuente }?.toSet().orEmpty()
+                val complete = com.example.erp.data.RateSchedulePolicy.isSnapshotComplete(sources)
                 val fresh = cached != null && cached.quotes.isNotEmpty() &&
                     com.example.erp.data.RateSchedulePolicy.isCacheFresh(age)
                 android.util.Log.d(
                     "DolitaLoad",
-                    "cache=${cached?.quotes?.size ?: 0} quotes, age=${if (age == Long.MAX_VALUE) "none" else "${age / 1000}s"}, fresh=$fresh"
+                    "cache=${sources.size} sources ($sources), age=${if (age == Long.MAX_VALUE) "none" else "${age / 1000}s"}, complete=$complete, fresh=$fresh"
                 )
-                if (fresh) {
+                if (fresh && complete) {
                     applyQuotes(cached!!.quotes)
                     return@launch
                 }

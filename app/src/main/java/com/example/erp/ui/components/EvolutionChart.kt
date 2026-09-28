@@ -130,19 +130,15 @@ fun EvolutionChart(
     val onSurface = MaterialTheme.colorScheme.onSurface
     val outlineColor = MaterialTheme.colorScheme.outline
 
-    // Stroke semantics: green (positiveColor) only for a positive series,
-    // semantic red for a negative one, and the palette accent when flat.
-    // Captured up front because the Canvas draw lambda is not composable.
+    // The series wears the selected theme's accent. Direction is still stated,
+    // but in text where it is read as a number: the tooltip variation keeps the
+    // semantic green/red, so a themed line never costs the "subió o bajó" cue.
     val accent = accentColor()
     val positive = positiveColor()
     val negative = negativeColor()
     val firstPrice = sorted.first().precio
     val lastPrice = sorted.last().precio
-    val strokeColor = when {
-        lastPrice > firstPrice -> positive
-        lastPrice < firstPrice -> negative
-        else -> lineColor
-    }
+    val strokeColor = accent
 
     val density = LocalDensity.current
     val textSizePx = with(density) { 12.sp.toPx() }
@@ -266,19 +262,13 @@ fun EvolutionChart(
                     )
                 )
 
-            // Data points: semantic per-sample colors, green only for
-            // positive samples.
+            // Data points follow the themed stroke. Direction is read from the
+            // tooltip's variation, not from dot colors: a themed line with
+            // green and red dots on it would look broken.
             points.forEachIndexed { idx, pt ->
                 val isSelected = idx == selectedIndex
                 val radius = if (isSelected) 6f else 3.5f
-                val sample = sorted[idx]
-                val dotColor = when {
-                    isSelected -> strokeColor
-                    sample.variacion != null && sample.variacion >= 0 -> positive
-                    sample.variacion != null && sample.variacion < 0 -> negative
-                    else -> strokeColor
-                }
-                drawCircle(color = dotColor, radius = radius, center = pt)
+                drawCircle(color = strokeColor, radius = radius, center = pt)
                 if (isSelected) {
                     drawCircle(
                         color = strokeColor.copy(alpha = 0.25f),
@@ -286,8 +276,8 @@ fun EvolutionChart(
                         center = pt
                     )
                 }
-                }
             }
+            } // end clipRect reveal
 
             // Etiquetas de eje X (primeros, ultimo, y seleccionado)
             // Primera fecha

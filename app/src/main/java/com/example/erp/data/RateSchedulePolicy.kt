@@ -47,6 +47,22 @@ object RateSchedulePolicy {
         ageMillis in 0 until CACHE_MAX_AGE_MILLIS
 
     /**
+     * Every source the app offers as a tab.
+     */
+    val REQUIRED_SOURCES = setOf("usd", "eur", "usdt")
+
+    /**
+     * Whether a stored snapshot can fill the whole screen.
+     *
+     * Recency is not enough on its own: the official worker only writes usd and
+     * eur, so a snapshot written minutes ago can be missing the parallel market.
+     * Rendering it anyway made the USDT tab disappear until the hourly worker
+     * happened to run.
+     */
+    fun isSnapshotComplete(sources: Set<String>): Boolean =
+        REQUIRED_SOURCES.all { sources.contains(it) }
+
+    /**
      * Milliseconds from [now] to the next full hour, so the periodic worker
      * lands on the hour instead of drifting with its own start time.
      */

@@ -99,4 +99,25 @@ class RateSchedulePolicyTest {
     fun `a backwards clock jump does not read as permanently fresh`() {
         assertFalse(RateSchedulePolicy.isCacheFresh(-10_000))
     }
+
+    @Test
+    fun `a snapshot with every source can render the whole screen`() {
+        assertTrue(RateSchedulePolicy.isSnapshotComplete(setOf("usd", "eur", "usdt")))
+    }
+
+    @Test
+    fun `a snapshot without the parallel market is not renderable`() {
+        // This is the case the official worker alone produces: usd + eur, no usdt.
+        assertFalse(RateSchedulePolicy.isSnapshotComplete(setOf("usd", "eur")))
+    }
+
+    @Test
+    fun `an empty snapshot is never complete`() {
+        assertFalse(RateSchedulePolicy.isSnapshotComplete(emptySet()))
+    }
+
+    @Test
+    fun `extra sources do not break completeness`() {
+        assertTrue(RateSchedulePolicy.isSnapshotComplete(setOf("usd", "eur", "usdt", "future")))
+    }
 }
