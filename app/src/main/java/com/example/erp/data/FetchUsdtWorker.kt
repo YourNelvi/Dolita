@@ -71,6 +71,8 @@ class FetchUsdtWorker(
                 Log.d("FetchUsdtWorker", "Paralelo unchanged; skipping notification")
             }
 
+            PriceAlertEvaluator.evaluate(applicationContext, PriceAlert.Fuente.PARALELO, parQuote.promedio)
+
             Result.success()
         } catch (e: Exception) {
             Log.e("FetchUsdtWorker", "Paralelo fetch failed: ${e.message}")

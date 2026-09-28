@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.CurrencyExchange
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -219,8 +220,8 @@ fun DolarScreenContent(
                     }
                     IconButton(onClick = { showBottomSheet = true }) {
                         Icon(
-                            imageVector = Icons.Rounded.Palette,
-                            contentDescription = "Tema",
+                            imageVector = Icons.Rounded.Tune,
+                            contentDescription = "Ajustes",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -452,7 +453,8 @@ private fun DolarContent(
                 FeaturedCard(
                     quote = quote,
                     highPrecision = highPrecision,
-                    futureQuote = uiState.futureQuote
+                    futureQuote = uiState.futureQuote,
+                    officialUsdRate = uiState.quotes.firstOrNull { it.fuente == "usd" }?.promedio
                 )
             }
         }
@@ -533,7 +535,12 @@ private fun DolarContent(
 }
 
 @Composable
-private fun FeaturedCard(quote: DolarQuote?, highPrecision: Boolean = false, futureQuote: DolarQuote? = null) {
+private fun FeaturedCard(
+    quote: DolarQuote?,
+    highPrecision: Boolean = false,
+    futureQuote: DolarQuote? = null,
+    officialUsdRate: Double? = null
+) {
     if (quote == null) return
     val shape = RoundedCornerShape(20.dp)
     val fracDigits = if (highPrecision) 4 else 2
@@ -542,6 +549,16 @@ private fun FeaturedCard(quote: DolarQuote?, highPrecision: Boolean = false, fut
         maximumFractionDigits = fracDigits
     }
     fun featFormatPrice(value: Double): String = "$${featPriceFormatter.format(value)}"
+
+    // The gap between the parallel market and the official rate is a MAGNITUDE,
+    // not a direction: a wider gap is not a "gain" and must not wear the green
+    // that means "subió". The sign carries the information, the accent carries
+    // the emphasis, and it only appears when both rates are actually known.
+    val spreadPercent = if (quote.fuente == "usdt" && officialUsdRate != null && officialUsdRate > 0.0) {
+        (quote.promedio - officialUsdRate) / officialUsdRate * 100.0
+    } else {
+        null
+    }
     // Fintech hero card: flat surface + hairline border (no M3 elevation, no
     // full-background color fill). The accent green is spent on the big number.
     Card(
@@ -610,6 +627,27 @@ private fun FeaturedCard(quote: DolarQuote?, highPrecision: Boolean = false, fut
             }
 
             Spacer(Modifier.height(16.dp))
+
+            // Only the parallel market has a gap worth stating, and only while
+            // both rates are known.
+            spreadPercent?.let { spread ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "${if (spread >= 0) "+" else ""}${"%.2f".format(spread)}%",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = accentColor()
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "sobre el oficial",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly

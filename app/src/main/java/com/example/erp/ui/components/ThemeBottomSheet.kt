@@ -41,6 +41,11 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import com.example.erp.data.ThemeMode
 import com.example.erp.ui.theme.AppTheme
 import com.example.erp.ui.theme.accentColor
@@ -110,9 +115,17 @@ fun ThemeBottomSheetContent(
         Spacer(modifier = Modifier.height(12.dp))
 
         Text(
-            text = "Tema y apariencia",
+            text = "Ajustes",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = "APARIENCIA",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -303,6 +316,22 @@ fun ThemeBottomSheetContent(
         }
     }
 
+    Spacer(modifier = Modifier.height(20.dp))
+    androidx.compose.material3.HorizontalDivider(
+        color = cardBorderColor()
+    )
+    Spacer(modifier = Modifier.height(12.dp))
+
+    Text(
+        text = "PREFERENCIAS",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    Spacer(modifier = Modifier.height(4.dp))
+
+    PriceAlertSection()
+
     // Theme Selection Dialog
     if (showThemeDialog) {
         ThemeSelectionDialog(
@@ -313,6 +342,137 @@ fun ThemeBottomSheetContent(
             },
             onDismiss = { showThemeDialog = false }
         )
+    }
+}
+
+/**
+ * "Avisame cuando el paralelo pase de 900."
+ *
+ * The threshold is a plain number field, not a slider: a slider implies
+ * precision the rate does not have and makes an exact target fiddly to hit.
+ */
+@Composable
+private fun PriceAlertSection() {
+    val context = LocalContext.current
+    val store = remember(context) { com.example.erp.data.PriceAlertStore(context) }
+    var config by remember { mutableStateOf(store.load()) }
+    var thresholdText by remember(config.threshold) {
+        mutableStateOf(if (config.threshold > 0) config.threshold.toString() else "")
+    }
+
+    fun persist(next: com.example.erp.data.PriceAlertStore.Config) {
+        config = next
+        store.save(next)
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Avisarme cuando cruce un precio",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "Un aviso por cruce, no cada hora",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = config.enabled,
+                onCheckedChange = { persist(config.copy(enabled = it)) }
+            )
+        }
+
+        if (config.enabled) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                com.example.erp.data.PriceAlert.Fuente.entries.forEach { fuente ->
+                    val isSelected = config.fuente == fuente
+                    val label = when (fuente) {
+                        com.example.erp.data.PriceAlert.Fuente.USD -> "BCV"
+                        com.example.erp.data.PriceAlert.Fuente.EUR -> "Euro"
+                        com.example.erp.data.PriceAlert.Fuente.PARALELO -> "Paralelo"
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(50))
+                            .background(if (isSelected) accentColor() else Color.Transparent)
+                            .border(1.dp, cardBorderColor(), RoundedCornerShape(50))
+                            .clickable { persist(config.copy(fuente = fuente)) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (isSelected) {
+                                androidx.compose.ui.graphics.Color.Black
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    }
+                }
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                listOf(
+                    "Sube de" to com.example.erp.data.PriceAlert.Direccion.ARRIBA,
+                    "Baja de" to com.example.erp.data.PriceAlert.Direccion.ABAJO
+                ).forEach { (label, direction) ->
+                    val isSelected = config.direction == direction
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(50))
+                            .background(if (isSelected) accentColor() else Color.Transparent)
+                            .border(1.dp, cardBorderColor(), RoundedCornerShape(50))
+                            .clickable { persist(config.copy(direction = direction)) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (isSelected) {
+                                androidx.compose.ui.graphics.Color.Black
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = thresholdText,
+                onValueChange = { entered ->
+                    val digits = entered.filter { it.isDigit() || it == '.' }
+                    thresholdText = digits
+                    digits.toDoubleOrNull()?.let { value ->
+                        persist(config.copy(threshold = value))
+                    }
+                },
+                label = { Text("Precio en bolívares") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
     }
 }
 

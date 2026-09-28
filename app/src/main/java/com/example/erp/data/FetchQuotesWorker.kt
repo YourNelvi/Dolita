@@ -42,6 +42,15 @@ class FetchQuotesWorker(
             quotes.forEach { QuotesCache.upsert(applicationContext, it) }
             RateWidgetProvider.updateAllWidgets(applicationContext)
 
+            // The official worker doubles as the evaluator for an alert set on
+            // the official rate; the price was already downloaded.
+            quotes.firstOrNull { it.fuente == "usd" }?.let {
+                PriceAlertEvaluator.evaluate(applicationContext, PriceAlert.Fuente.USD, it.promedio)
+            }
+            quotes.firstOrNull { it.fuente == "eur" }?.let {
+                PriceAlertEvaluator.evaluate(applicationContext, PriceAlert.Fuente.EUR, it.promedio)
+            }
+
             // Morning only: the rate of the day. The evening pass exists purely
             // to catch tomorrow's number, so re-announcing today's here would
             // be the duplicate this whole class exists to avoid.
