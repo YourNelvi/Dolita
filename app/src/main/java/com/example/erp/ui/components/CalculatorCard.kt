@@ -81,13 +81,24 @@ private fun formatCalc(value: Double): String {
 }
 
 /**
- * The other market the calculator prices against, with the label that keeps it
- * honest: the euro alternative is a cross, not a parallel euro market.
+ * The other reference the calculator prices against.
+ *
+ * `ALTERNATIVE` is a real second market: the official rate against the
+ * parallel, and the difference is a verdict the user can act on.
+ *
+ * `CROSS` is only for the euro, which has no parallel market. It shows the
+ * real published EUR/USD cross — how many official dollars one euro is — and
+ * carries no verdict, because there is no second market to be better or worse
+ * than. The earlier version priced a euro against the parallel dollar through
+ * an implied cross: every input was published, but the combination was not a
+ * rate anybody trades, and it was making a decision out of fiction.
  */
+private enum class ComparisonMode { ALTERNATIVE, CROSS }
+
 private data class AlternativeMarket(
     val label: String,
     val rate: Double,
-    val isCross: Boolean
+    val mode: ComparisonMode
 )
 
 private fun currencySymbol(unit: String): String = when (unit) {
@@ -105,15 +116,14 @@ fun CalculatorCard(
     val shortName = quote.fuente.uppercase()
 
     /**
-     * The same amount priced at the OTHER market, so the comparison reads the
-     * same whichever tab you are on: on the official rate you learn what the
-     * parallel costs you, on the parallel you learn what the official saves
-     * you.
+     * The same amount priced against the other reference, so the comparison
+     * reads the same whichever tab you are on: on the official rate you learn
+     * what the parallel costs you, on the parallel you learn what the official
+     * saves you.
      *
-     * For the euro there is no parallel euro market, so the alternative is the
-     * real official EUR/USD cross applied to the parallel dollar rate. Every
-     * input is a published rate; the combination is hypothetical, which is why
-     * the label says "vía dólar" instead of pretending a euro parallel exists.
+     * The euro is the exception and is treated as one: there is no parallel
+     * euro, so it is shown against the official dollar — how many official
+     * dollars an euro is — rather than against an implied parallel cross.
      */
     val usdRate = quotes.firstOrNull { it.fuente == "usd" }?.promedio
     val eurRate = quotes.firstOrNull { it.fuente == "eur" }?.promedio
@@ -121,11 +131,10 @@ fun CalculatorCard(
 
     val alternative: AlternativeMarket? = remember(quote.fuente, rate, usdRate, eurRate, usdtRate) {
         when (quote.fuente) {
-            "usd" -> usdtRate?.let { AlternativeMarket("Al paralelo", it, false) }
-            "usdt" -> usdRate?.let { AlternativeMarket("Al oficial", it, false) }
-            "eur" -> if (usdRate != null && usdRate > 0.0 && eurRate != null && eurRate > 0.0 && usdtRate != null) {
-                // 1 EUR = (eur / usd) dollars, then priced at the parallel rate.
-                AlternativeMarket("Al paralelo (vía dólar)", (eurRate / usdRate) * usdtRate, true)
+            "usd" -> usdtRate?.let { AlternativeMarket("Al paralelo", it, ComparisonMode.ALTERNATIVE) }
+            "usdt" -> usdRate?.let { AlternativeMarket("Al oficial", it, ComparisonMode.ALTERNATIVE) }
+            "eur" -> if (usdRate != null && usdRate > 0.0) {
+                AlternativeMarket("Con el dólar oficial", usdRate, ComparisonMode.CROSS)
             } else {
                 null
             }
@@ -320,8 +329,14 @@ fun CalculatorCard(
 
             // The same money, priced at the other market.
             if (alternativeRate != null && alternative != null) {
+                val isCross = alternative.mode == ComparisonMode.CROSS
                 val editingBolivares = lastEdited == "ves"
-                val entered = if (editingBolivares) {
+                // A cross only means something for the currency amount: how many
+                // official dollars one euro is. Pricing a bolivar amount against
+                // a USD cross would be a category error.
+                val entered = if (isCross) {
+                    CurrencyConverter.parseDigits(divDigits)
+                } else if (editingBolivares) {
                     CurrencyConverter.parseDigits(vesDigits)
                 } else {
                     CurrencyConverter.parseDigits(divDigits)
@@ -337,8 +352,18 @@ fun CalculatorCard(
                             amount.multiply(BigDecimal.valueOf(rateValue))
                         }
 
+                    // The euro cross is euros -> official dollars. Both rates are
+                    // quoted in bolivars, so the ratio is EUR/VES over USD/VES —
+                    // dividing the other way round returns dollars per bolivar
+                    // and priced one euro at $0,88.
+                    val atOther = if (isCross) {
+                        val eurToUsd = BigDecimal.valueOf(rate)
+                            .divide(BigDecimal.valueOf(alternativeRate), 6, RoundingMode.HALF_UP)
+                        entered.multiply(eurToUsd)
+                    } else {
+                        convert(entered, alternativeRate)
+                    }
                     val atSelected = convert(entered, rate)
-                    val atOther = convert(entered, alternativeRate)
                     val delta = atOther.subtract(atSelected)
                     val difference = delta.abs()
                     val unit = if (editingBolivares) shortName else "Bs"
@@ -362,7 +387,13 @@ fun CalculatorCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = if (editingBolivares) {
+                            // A cross states what the euro IS in official
+                            // dollars; it is not a second market to be better or
+                            // worse than, so the value is in the currency of the
+                            // cross (dollars) rather than in bolivars.
+                            text = if (isCross) {
+                                "€${CurrencyConverter.format(entered)} → $${CurrencyConverter.format(atOther)}"
+                            } else if (editingBolivares) {
                                 "Bs ${CurrencyConverter.format(entered)} → ${currencySymbol(unit)}${CurrencyConverter.format(atOther)}"
                             } else {
                                 "${currencySymbol(unit)}${CurrencyConverter.format(entered)} → Bs ${CurrencyConverter.format(atOther)}"
@@ -373,27 +404,30 @@ fun CalculatorCard(
                         )
                     }
                     Spacer(Modifier.height(4.dp))
-                    Text(
-                        // Which side is "better" depends on what is being
-                        // compared. Dollars are an asset you want MORE of;
-                        // bolivars are what you pay, so you want FEWER. Painting
-                        // an official rate that saves you money red — because the
-                        // number went down — is how a true saving reads as a loss.
-                        text = when {
-                            editingBolivares && better ->
-                                "Te quedan $unit más: ${CurrencyConverter.format(difference)}"
-                            editingBolivares ->
-                                "Te quedan $unit menos: ${CurrencyConverter.format(difference)}"
-                            better -> "Te ahorrás ${CurrencyConverter.format(difference)} Bs"
-                            else -> "Te cuesta Bs más: ${CurrencyConverter.format(difference)}"
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (better) {
-                            positiveColor()
-                        } else {
-                            com.example.erp.ui.theme.DownRedLight
-                        }
-                    )
+                    if (!isCross) {
+                        Text(
+                            // Which side is "better" depends on what is being
+                            // compared. Dollars are an asset you want MORE of;
+                            // bolivars are what you pay, so you want FEWER.
+                            // Painting an official rate that saves you money red —
+                            // because the number went down — is how a true saving
+                            // reads as a loss.
+                            text = when {
+                                editingBolivares && better ->
+                                    "Te quedan $unit más: ${CurrencyConverter.format(difference)}"
+                                editingBolivares ->
+                                    "Te quedan $unit menos: ${CurrencyConverter.format(difference)}"
+                                better -> "Te ahorrás ${CurrencyConverter.format(difference)} Bs"
+                                else -> "Te cuesta Bs más: ${CurrencyConverter.format(difference)}"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (better) {
+                                positiveColor()
+                            } else {
+                                com.example.erp.ui.theme.DownRedLight
+                            }
+                        )
+                    }
                 }
             }
         }
