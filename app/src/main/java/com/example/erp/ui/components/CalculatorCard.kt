@@ -60,6 +60,7 @@ import com.example.erp.ui.theme.accentColor
 import com.example.erp.ui.theme.cardBorder
 import com.example.erp.ui.theme.cardBorderColor
 import com.example.erp.ui.theme.cardContainerColor
+import com.example.erp.ui.theme.positiveColor
 import kotlinx.coroutines.delay
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -79,29 +80,59 @@ private fun formatCalc(value: Double): String {
     return if (parts.size > 1) "$withThousands,${parts[1]}" else "$withThousands,00"
 }
 
+/**
+ * The other market the calculator prices against, with the label that keeps it
+ * honest: the euro alternative is a cross, not a parallel euro market.
+ */
+private data class AlternativeMarket(
+    val label: String,
+    val rate: Double,
+    val isCross: Boolean
+)
+
+private fun currencySymbol(unit: String): String = when (unit) {
+    "EUR" -> "€"
+    else -> "$"
+}
+
 @Composable
 fun CalculatorCard(
     quote: DolarQuote?,
-    parallelQuote: DolarQuote? = null
+    quotes: List<DolarQuote> = emptyList()
 ) {
     if (quote == null) return
     val rate = quote.promedio
     val shortName = quote.fuente.uppercase()
+
     /**
-     * The same amount priced at the parallel market. This is the comparison a
-     * Bolivian actually makes: the bolivar amount is fixed, but the dollars it
-     * buys are not. It is a personal outcome, not a market statistic, so the
-     * difference wears direction colors — unlike the spread in the hero, which
-     * is a fact about the market and stays neutral.
+     * The same amount priced at the OTHER market, so the comparison reads the
+     * same whichever tab you are on: on the official rate you learn what the
+     * parallel costs you, on the parallel you learn what the official saves
+     * you.
      *
-     * USD only. The parallel quote is a USD/VES rate, so applying it to one
-     * euro would price 1 EUR as if it were 1 USD. A cross rate could be
-     * derived from the two official prices, but nobody trades that implied
-     * number and quoting it would invent precision the market does not have.
+     * For the euro there is no parallel euro market, so the alternative is the
+     * real official EUR/USD cross applied to the parallel dollar rate. Every
+     * input is a published rate; the combination is hypothetical, which is why
+     * the label says "vía dólar" instead of pretending a euro parallel exists.
      */
-    val parallelRate = parallelQuote?.promedio?.takeIf {
-        quote.fuente == "usd" && it > 0.0 && rate > 0.0
+    val usdRate = quotes.firstOrNull { it.fuente == "usd" }?.promedio
+    val eurRate = quotes.firstOrNull { it.fuente == "eur" }?.promedio
+    val usdtRate = quotes.firstOrNull { it.fuente == "usdt" }?.promedio
+
+    val alternative: AlternativeMarket? = remember(quote.fuente, rate, usdRate, eurRate, usdtRate) {
+        when (quote.fuente) {
+            "usd" -> usdtRate?.let { AlternativeMarket("Al paralelo", it, false) }
+            "usdt" -> usdRate?.let { AlternativeMarket("Al oficial", it, false) }
+            "eur" -> if (usdRate != null && usdRate > 0.0 && eurRate != null && eurRate > 0.0 && usdtRate != null) {
+                // 1 EUR = (eur / usd) dollars, then priced at the parallel rate.
+                AlternativeMarket("Al paralelo (vía dólar)", (eurRate / usdRate) * usdtRate, true)
+            } else {
+                null
+            }
+            else -> null
+        }
     }
+    val alternativeRate = alternative?.rate?.takeIf { it > 0.0 && rate > 0.0 }
     var lastEdited by remember { mutableStateOf("ves") }
     // Estado: solo dígitos puros (ej: "1234" = 1234,00)
     var vesDigits by remember { mutableStateOf("") }
@@ -287,8 +318,8 @@ fun CalculatorCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            // The same money, priced at the parallel market.
-            if (parallelRate != null) {
+            // The same money, priced at the other market.
+            if (alternativeRate != null && alternative != null) {
                 val editingBolivares = lastEdited == "ves"
                 val entered = if (editingBolivares) {
                     CurrencyConverter.parseDigits(vesDigits)
@@ -296,9 +327,9 @@ fun CalculatorCard(
                     CurrencyConverter.parseDigits(divDigits)
                 }
                 if (entered != null && entered > BigDecimal.ZERO) {
-                    // Direction matters: bolivar input divides down into dollars,
-                    // currency input multiplies up into bolivars. Getting this
-                    // backwards is how 1,00 USD turned into "Bs 0,00".
+                    // Direction matters: bolivar input divides down into the
+                    // currency, currency input multiplies up into bolivars.
+                    // Getting this backwards is how 1,00 USD became "Bs 0,00".
                     fun convert(amount: BigDecimal, rateValue: Double): BigDecimal =
                         if (editingBolivares) {
                             amount.divide(BigDecimal.valueOf(rateValue), 6, RoundingMode.HALF_UP)
@@ -307,9 +338,13 @@ fun CalculatorCard(
                         }
 
                     val atSelected = convert(entered, rate)
-                    val atParallel = convert(entered, parallelRate)
-                    val difference = atSelected.subtract(atParallel).abs()
-                    val unit = if (editingBolivares) "USD" else "Bs"
+                    val atOther = convert(entered, alternativeRate)
+                    val delta = atOther.subtract(atSelected)
+                    val difference = delta.abs()
+                    val unit = if (editingBolivares) shortName else "Bs"
+                    // Editing bolivars: the output is an asset, more is better.
+                    // Editing the currency: the output is a cost, less is better.
+                    val better = if (editingBolivares) delta.signum() > 0 else delta.signum() < 0
 
                     Spacer(Modifier.height(14.dp))
                     androidx.compose.material3.HorizontalDivider(
@@ -322,15 +357,15 @@ fun CalculatorCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Al paralelo",
+                            text = alternative.label,
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
                             text = if (editingBolivares) {
-                                "Bs ${CurrencyConverter.format(entered)} → $${CurrencyConverter.format(atParallel)}"
+                                "Bs ${CurrencyConverter.format(entered)} → ${currencySymbol(unit)}${CurrencyConverter.format(atOther)}"
                             } else {
-                                "$${CurrencyConverter.format(entered)} → Bs ${CurrencyConverter.format(atParallel)}"
+                                "${currencySymbol(unit)}${CurrencyConverter.format(entered)} → Bs ${CurrencyConverter.format(atOther)}"
                             },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Medium,
@@ -339,16 +374,25 @@ fun CalculatorCard(
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        // The same money, worse rate: fewer dollars to buy, or
-                        // more bolivars to pay. Either way the user is worse off,
-                        // so this wears the negative signal on purpose.
-                        text = if (editingBolivares) {
-                            "Te quedan $unit menos: ${CurrencyConverter.format(difference)}"
-                        } else {
-                            "Te cuesta $unit más: ${CurrencyConverter.format(difference)}"
+                        // Which side is "better" depends on what is being
+                        // compared. Dollars are an asset you want MORE of;
+                        // bolivars are what you pay, so you want FEWER. Painting
+                        // an official rate that saves you money red — because the
+                        // number went down — is how a true saving reads as a loss.
+                        text = when {
+                            editingBolivares && better ->
+                                "Te quedan $unit más: ${CurrencyConverter.format(difference)}"
+                            editingBolivares ->
+                                "Te quedan $unit menos: ${CurrencyConverter.format(difference)}"
+                            better -> "Te ahorrás ${CurrencyConverter.format(difference)} Bs"
+                            else -> "Te cuesta Bs más: ${CurrencyConverter.format(difference)}"
                         },
                         style = MaterialTheme.typography.labelMedium,
-                        color = com.example.erp.ui.theme.DownRedLight
+                        color = if (better) {
+                            positiveColor()
+                        } else {
+                            com.example.erp.ui.theme.DownRedLight
+                        }
                     )
                 }
             }

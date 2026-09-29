@@ -500,7 +500,7 @@ private fun DolarContent(
             calcQuote?.let { quote ->
                 CalculatorCard(
                     quote = quote,
-                    parallelQuote = uiState.quotes.firstOrNull { it.fuente == "usdt" }
+                    quotes = uiState.quotes
                 )
             }
         }
