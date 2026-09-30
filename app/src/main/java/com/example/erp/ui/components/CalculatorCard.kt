@@ -64,6 +64,7 @@ import com.example.erp.ui.theme.positiveColor
 import kotlinx.coroutines.delay
 import java.math.BigDecimal
 import java.math.RoundingMode
+import kotlin.math.abs
 
 // Amount inputs are numeric: tabular figures keep digits aligned while typing.
 private val AmountTextStyle = TextStyle(
@@ -346,6 +347,16 @@ fun CalculatorCard(
                     // Editing the currency: the output is a cost, less is better.
                     val better = if (editingBolivares) delta.signum() > 0 else delta.signum() < 0
 
+                    // The question is not what each rate costs — the card already
+                    // says that above — it is HOW MUCH APART they are. Stating
+                    // the gap as a percentage AND as money answers both halves,
+                    // and cannot be misread as a second conversion of the same
+                    // amount, which is what "EUR 1,00 -> Bs 1.082,38" looked like
+                    // two lines under "1 EUR = 974,71 Bs".
+                    val gapPercent = ((alternativeRate - rate) / rate) * 100.0
+                    val gapPerUnit = abs(alternativeRate - rate)
+                    val gapUp = alternativeRate > rate
+
                     Spacer(Modifier.height(14.dp))
                     androidx.compose.material3.HorizontalDivider(
                         color = cardBorderColor()
@@ -362,14 +373,12 @@ fun CalculatorCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = if (editingBolivares) {
-                                "Bs ${CurrencyConverter.format(entered)} → ${currencySymbol(unit)}${CurrencyConverter.format(atOther)}"
-                            } else {
-                                "${currencySymbol(unit)}${CurrencyConverter.format(entered)} → Bs ${CurrencyConverter.format(atOther)}"
-                            },
+                            text = "${if (gapUp) "+" else ""}${"%.2f".format(gapPercent)}%" +
+                                "  ·  Bs ${CurrencyConverter.format(BigDecimal.valueOf(gapPerUnit))}" +
+                                if (gapUp) " más" else " menos",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = accentColor()
                         )
                     }
                     Spacer(Modifier.height(4.dp))
