@@ -320,87 +320,172 @@ fun CalculatorCard(
             )
 
             // The same money, priced at the other market.
-            if (alternativeRate != null && alternative != null) {
-                val editingBolivares = lastEdited == "ves"
-                val entered = if (editingBolivares) {
-                    CurrencyConverter.parseDigits(vesDigits)
-                } else {
-                    CurrencyConverter.parseDigits(divDigits)
-                }
-                if (entered != null && entered > BigDecimal.ZERO) {
-                    // Direction matters: bolivar input divides down into the
-                    // currency, currency input multiplies up into bolivars.
-                    // Getting this backwards is how 1,00 USD became "Bs 0,00".
-                    fun convert(amount: BigDecimal, rateValue: Double): BigDecimal =
-                        if (editingBolivares) {
-                            amount.divide(BigDecimal.valueOf(rateValue), 6, RoundingMode.HALF_UP)
-                        } else {
-                            amount.multiply(BigDecimal.valueOf(rateValue))
-                        }
-
-                    val atSelected = convert(entered, rate)
-                    val atOther = convert(entered, alternativeRate)
-                    val delta = atOther.subtract(atSelected)
-                    val difference = delta.abs()
-                    val unit = if (editingBolivares) shortName else "Bs"
-                    // Editing bolivars: the output is an asset, more is better.
-                    // Editing the currency: the output is a cost, less is better.
-                    val better = if (editingBolivares) delta.signum() > 0 else delta.signum() < 0
-
-                    // The question is not what each rate costs — the card already
-                    // says that above — it is HOW MUCH APART they are. Stating
-                    // the gap as a percentage AND as money answers both halves,
-                    // and cannot be misread as a second conversion of the same
-                    // amount, which is what "EUR 1,00 -> Bs 1.082,38" looked like
-                    // two lines under "1 EUR = 974,71 Bs".
-                    val gapPercent = ((alternativeRate - rate) / rate) * 100.0
-                    val gapPerUnit = abs(alternativeRate - rate)
-                    val gapUp = alternativeRate > rate
-
-                    Spacer(Modifier.height(14.dp))
-                    androidx.compose.material3.HorizontalDivider(
-                        color = cardBorderColor()
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = alternative.label,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "${if (gapUp) "+" else ""}${"%.2f".format(gapPercent)}%" +
-                                "  ·  Bs ${CurrencyConverter.format(BigDecimal.valueOf(gapPerUnit))}" +
-                                if (gapUp) " más" else " menos",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = accentColor()
-                        )
+            val editingBolivares = lastEdited == "ves"
+            val entered = if (editingBolivares) {
+                CurrencyConverter.parseDigits(vesDigits)
+            } else {
+                CurrencyConverter.parseDigits(divDigits)
+            }
+            if (alternativeRate != null && alternative != null && entered != null && entered > BigDecimal.ZERO) {
+                // Direction matters: bolivar input divides down into the
+                // currency, currency input multiplies up into bolivars.
+                // Getting this backwards is how 1,00 USD became "Bs 0,00".
+                fun convert(amount: BigDecimal, rateValue: Double): BigDecimal =
+                    if (editingBolivares) {
+                        amount.divide(BigDecimal.valueOf(rateValue), 6, RoundingMode.HALF_UP)
+                    } else {
+                        amount.multiply(BigDecimal.valueOf(rateValue))
                     }
-                    Spacer(Modifier.height(4.dp))
+
+                val atSelected = convert(entered, rate)
+                val atOther = convert(entered, alternativeRate)
+                val delta = atOther.subtract(atSelected)
+                val difference = delta.abs()
+                val unit = if (editingBolivares) shortName else "Bs"
+                // Editing bolivars: the output is an asset, more is better.
+                // Editing the currency: the output is a cost, less is better.
+                val better = if (editingBolivares) delta.signum() > 0 else delta.signum() < 0
+
+                // The question is not what each rate costs — the card already
+                // says that above — it is HOW MUCH APART they are. Stating
+                // the gap as a percentage AND as money answers both halves,
+                // and cannot be misread as a second conversion of the same
+                // amount, which is what "EUR 1,00 -> Bs 1.082,38" looked like
+                // two lines under "1 EUR = 974,71 Bs".
+                val gapPercent = ((alternativeRate - rate) / rate) * 100.0
+                val gapPerUnit = abs(alternativeRate - rate)
+                val gapUp = alternativeRate > rate
+
+                Spacer(Modifier.height(14.dp))
+                androidx.compose.material3.HorizontalDivider(
+                    color = cardBorderColor()
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        // Which side is "better" depends on what is being
-                        // compared. Dollars are an asset you want MORE of;
-                        // bolivars are what you pay, so you want FEWER. Painting
-                        // an official rate that saves you money red — because the
-                        // number went down — is how a true saving reads as a loss.
-                        text = when {
-                            editingBolivares && better ->
-                                "Te quedan $unit más: ${CurrencyConverter.format(difference)}"
-                            editingBolivares ->
-                                "Te quedan $unit menos: ${CurrencyConverter.format(difference)}"
-                            better -> "Te ahorrás ${CurrencyConverter.format(difference)} Bs"
-                            else -> "Te cuesta Bs más: ${CurrencyConverter.format(difference)}"
-                        },
+                        text = alternative.label,
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (better) {
-                            positiveColor()
-                        } else {
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "${if (gapUp) "+" else ""}${"%.2f".format(gapPercent)}%" +
+                            "  ·  Bs ${CurrencyConverter.format(BigDecimal.valueOf(gapPerUnit))}" +
+                            if (gapUp) " más" else " menos",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = accentColor()
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    // Which side is "better" depends on what is being
+                    // compared. Dollars are an asset you want MORE of;
+                    // bolivars are what you pay, so you want FEWER. Painting
+                    // an official rate that saves you money red — because the
+                    // number went down — is how a true saving reads as a loss.
+                    text = when {
+                        editingBolivares && better ->
+                            "Te quedan $unit más: ${CurrencyConverter.format(difference)}"
+                        editingBolivares ->
+                            "Te quedan $unit menos: ${CurrencyConverter.format(difference)}"
+                        better -> "Te ahorrás ${CurrencyConverter.format(difference)} Bs"
+                        else -> "Te cuesta Bs más: ${CurrencyConverter.format(difference)}"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (better) {
+                        positiveColor()
+                    } else {
+                        com.example.erp.ui.theme.DownRedLight
+                    }
+                )
+
+            }
+
+            // The parallel tab asks a question the percentage above cannot
+            // answer: how many OFFICIAL dollars is this amount actually worth,
+            // and what did the differential cost. Those are two different units,
+            // and the gap line above states neither — it only says the two rates
+            // are 11% apart. The math lives in CurrencyConverter, where it is
+            // unit-testable without a composition.
+            val differential = if (quote.fuente == "usdt") {
+                // Bound to locals first: smart casts do not survive the closure
+                // capture that a composable body implies.
+                val officialRate = usdRate
+                val amount = entered
+                if (officialRate != null && amount != null) {
+                    CurrencyConverter.differentialCambiario(amount, rate, officialRate, editingBolivares)
+                } else {
+                    null
+                }
+            } else {
+                null
+            }
+
+            if (differential != null) {
+                val officialDollars = differential.officialDollars
+                val costExtraBs = differential.costExtraBs
+                val overpaying = differential.overpaying
+
+                Spacer(Modifier.height(14.dp))
+                androidx.compose.material3.HorizontalDivider(color = cardBorderColor())
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "Diferencial cambiario",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    // Naming the base keeps "A dólar oficial" unambiguous: the
+                    // reader knows the $111,07 is the answer for THIS amount.
+                    text = "Sobre ${CurrencyConverter.format(differential.enteredAmount)} " +
+                        if (editingBolivares) "Bs" else shortName,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 13.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "A dólar oficial (BCV)",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "\$${CurrencyConverter.format(officialDollars)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = accentColor()
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (overpaying) "Costo frente a la oficial" else "Ahorro frente a la oficial",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Bs ${CurrencyConverter.format(costExtraBs.abs())}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                        // A parallel rate under the official one would be a
+                        // saving, and painting that red would be a lie.
+                        color = if (overpaying) {
                             com.example.erp.ui.theme.DownRedLight
+                        } else {
+                            positiveColor()
                         }
                     )
                 }

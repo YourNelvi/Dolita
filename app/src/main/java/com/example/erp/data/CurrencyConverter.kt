@@ -4,6 +4,22 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 
 /**
+ * What the parallel tab owes its reader once an amount is entered: what that
+ * amount is worth in OFFICIAL dollars, and what the differential cost in
+ * bolivars. A percentage says the two rates are 11% apart; it does not say how
+ * many dollars or how many bolivars, which is the question actually asked.
+ */
+data class DifferentialCambiario(
+    val enteredAmount: BigDecimal,
+    val amountInBs: BigDecimal,
+    val officialDollars: BigDecimal,
+    val costExtraBs: BigDecimal
+) {
+    /** True when the parallel rate charges MORE than the official one. */
+    val overpaying: Boolean get() = costExtraBs.signum() > 0
+}
+
+/**
  * Conversion math behind the calculator card.
  *
  * Both amount fields hold a plain digit string instead of a formatted number
@@ -83,5 +99,38 @@ object CurrencyConverter {
         val rateBD = BigDecimal.valueOf(rate)
         val result = v.multiply(rateBD)
         return toDigits(format(result))
+    }
+
+    /**
+     * The cambiario differential for [entered], where [rate] is the parallel
+     * rate in Bs per USDT and [usdRate] the official BCV rate in Bs per dollar.
+     *
+     * Both figures derive from the amount in BOLIVARS, never from the field the
+     * reader typed in, so an equivalent amount reports the same numbers either
+     * way: 100 USDT and the 95.406 Bs those USDT are worth agree. Deriving them
+     * from the field instead is how the same purchase reports two different
+     * numbers depending on which box had focus.     *
+     * Null when the amount is not positive or a rate is unusable — an
+     * unrendered differential beats a fabricated one.
+     */
+    fun differentialCambiario(
+        entered: BigDecimal,
+        rate: Double,
+        usdRate: Double,
+        editingBolivares: Boolean
+    ): DifferentialCambiario? {
+        if (entered <= BigDecimal.ZERO || rate <= 0.0 || usdRate <= 0.0) return null
+        val rateBD = BigDecimal.valueOf(rate)
+        val usdBD = BigDecimal.valueOf(usdRate)
+        val amountInBs = if (editingBolivares) {
+            entered
+        } else {
+            entered.multiply(rateBD)
+        }
+        val parallelDollars = amountInBs.divide(rateBD, 6, RoundingMode.HALF_UP)
+        val officialDollars = amountInBs.divide(usdBD, 2, RoundingMode.HALF_UP)
+        // What those same parallel dollars would have cost at the official rate.
+        val costExtraBs = amountInBs.subtract(parallelDollars.multiply(usdBD))
+        return DifferentialCambiario(entered, amountInBs, officialDollars, costExtraBs)
     }
 }
