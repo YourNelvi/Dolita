@@ -42,6 +42,8 @@ import androidx.compose.material.icons.rounded.CurrencyExchange
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -110,8 +112,10 @@ import com.example.erp.ui.theme.isDarkTheme
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.NumberFormat
+import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
@@ -156,7 +160,11 @@ fun DolarScreen(
     DolarScreenContent(
         uiState = uiState,
         onSelectCasa = viewModel::select,
-        onRefresh = viewModel::load,
+        // Explicit lambda, not `viewModel::load`: a method reference to a
+        // function with a default argument binds force=false, so the refresh
+        // button was silently asking the cache to render itself instead of
+        // asking the network — and "Reintentar" inherited the same no-op.
+        onRefresh = { viewModel.load(force = true) },
         onToggleFutureRate = viewModel::toggleUseFutureRate,
         viewModel = viewModel
     )
@@ -366,44 +374,137 @@ private fun LoadingSkeleton(modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Cold-start failure with nothing stored to show. The raw exception belongs to
+ * the developer, not the reader: "Unable to resolve host …" is a stack trace
+ * wearing a UI costume. This states what is missing and what unblocks it, and
+ * nothing else.
+ */
 @Composable
 private fun ErrorState(
     error: AppError,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val message = when (error) {
-        is AppError.NetworkError -> "Error de red: ${error.message}"
-        is AppError.ApiError -> "Error del servidor (${error.source}): ${error.message}"
-        is AppError.ParseError -> "Error de datos (${error.field}): ${error.message}"
-    }
+    val offline = error is AppError.NetworkError
     Column(
-        modifier = modifier.padding(32.dp),
+        modifier = modifier.padding(horizontal = 36.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
-            imageVector = Icons.Rounded.Refresh,
+            imageVector = if (offline) Icons.Rounded.CloudOff else Icons.Rounded.ErrorOutline,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.error,
-            modifier = Modifier.size(48.dp)
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            modifier = Modifier.size(36.dp)
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(20.dp))
         Text(
-            text = "No se pudo cargar la cotización",
-            style = MaterialTheme.typography.headlineMedium,
+            text = if (offline) "Sin conexión" else "No pudimos cargar la tasa",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = message,
+            text = if (offline) {
+                "Conectate a internet y volvé a intentar para ver la tasa de hoy."
+            } else {
+                "El servidor no respondió. Probá de nuevo en un momento."
+            },
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
-        Spacer(Modifier.height(24.dp))
-        Button(onClick = onRetry) {
-            Text("Reintentar")
+        Spacer(Modifier.height(28.dp))
+        HairlineAction(label = "Reintentar", onClick = onRetry)
+    }
+}
+
+/**
+ * Quiet action for empty and failure states. A filled M3 pill shouts in a
+ * layout that is otherwise flat and hairline-bordered; this keeps the same
+ * voice as every other affordance in the app.
+ */
+@Composable
+private fun HairlineAction(
+    label: String,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(10.dp)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .clip(shape)
+            .border(
+                androidx.compose.foundation.BorderStroke(1.dp, accentColor().copy(alpha = 0.4f)),
+                shape
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 11.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Refresh,
+            contentDescription = null,
+            tint = accentColor(),
+            modifier = Modifier.size(16.dp)
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = accentColor()
+        )
+    }
+}
+
+/**
+ * Honesty strip for a snapshot the app could not refresh. Known-good numbers
+ * with a clear "these are old" note beat an empty screen — the reader always
+ * knows which of the two they are looking at.
+ */
+@Composable
+private fun StaleBanner(
+    timestampMillis: Long?,
+    modifier: Modifier = Modifier
+) {
+    val stamp = remember(timestampMillis) {
+        timestampMillis?.let {
+            Instant.ofEpochMilli(it)
+                .atZone(ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofPattern("dd/MM · HH:mm"))
+        }
+    }
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(cardContainerColor())
+            .border(cardBorder(), shape)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.CloudOff,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp)
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Sin conexión",
+                style = MaterialTheme.typography.labelMedium,
+                color = accentColor()
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = stamp?.let { "Mostrando la tasa del $it" }
+                    ?: "Mostrando la última tasa guardada",
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 13.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -429,6 +530,12 @@ private fun DolarContent(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Sits above the hero rate on purpose: the reader learns these numbers
+        // are old before they read them, not after.
+        if (uiState.isStale) {
+            item { StaleBanner(timestampMillis = uiState.staleSinceEpochMillis) }
+        }
+
         item {
             // Switching casa crossfades the board instead of hard-swapping it.
             // No Entrance() here on purpose: per-item entrance animations

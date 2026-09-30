@@ -7,32 +7,29 @@ import kotlinx.coroutines.withContext
 
 private const val TAG = "CachedDolarRepo"
 
+/**
+ * Network-first with a write-through cache.
+ *
+ * There is deliberately NO silent cache fallback here. Serving stored numbers
+ * when the fetch failed, indistinguishably from a live result, is what made a
+ * "Sin conexión" notice impossible to render: by the time the UI saw the
+ * quotes, the only fact that mattered — these are old — had already been
+ * discarded. Deciding whether a snapshot is fit to show, and marking it stale
+ * when it is not, belongs to the ViewModel that owns that state. Callers that
+ * genuinely want best-effort values read [QuotesCache] themselves; that is what
+ * the widget does.
+ */
 class CachedDolarRepository(
     private val apiRepository: ApiDolarRepository,
     private val context: Context
 ) : DolarRepository {
 
     override suspend fun getQuotes(): List<DolarQuote> = withContext(Dispatchers.IO) {
-        // Intentar obtener de la API primero
-        return@withContext try {
-            val quotes = apiRepository.getQuotes()
-            if (quotes.isNotEmpty()) {
-                // Guardar en cache si la API responde bien
-                QuotesCache.save(quotes, context)
-                Log.d(TAG, "API success, cached ${quotes.size} quotes")
-            }
-            quotes
-        } catch (e: Exception) {
-            Log.w(TAG, "API failed, trying cache: ${e.message}")
-            // Si falla la API, intentar cache
-            val cached = QuotesCache.getCached(context)
-            if (cached != null) {
-                Log.d(TAG, "Returning ${cached.quotes.size} cached quotes (age: ${(System.currentTimeMillis() - cached.timestamp) / 1000 / 60} min)")
-                cached.quotes
-            } else {
-                Log.e(TAG, "No cached quotes available")
-                throw e // Re-lanzar la excepción original si no hay cache
-            }
+        val quotes = apiRepository.getQuotes()
+        if (quotes.isNotEmpty()) {
+            QuotesCache.save(quotes, context)
+            Log.d(TAG, "API success, cached ${quotes.size} quotes")
         }
+        quotes
     }
 }

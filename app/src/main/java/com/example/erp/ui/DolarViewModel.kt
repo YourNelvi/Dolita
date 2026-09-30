@@ -36,7 +36,11 @@ data class DolarUiState(
     val selectedDateLabel: String? = null,
     val dateLookupDone: Boolean = false,
     val futureQuote: DolarQuote? = null,
-    val useFutureRate: Boolean = false
+    val useFutureRate: Boolean = false,
+    /** True when what is on screen came from cache because a refresh failed. */
+    val isStale: Boolean = false,
+    /** When the shown snapshot was captured, for the staleness notice. */
+    val staleSinceEpochMillis: Long? = null
 )
 
 /**
@@ -115,6 +119,26 @@ open class DolarViewModel @JvmOverloads constructor(
                 val rawQuotes = repository.getQuotes()
                 applyQuotes(rawQuotes)
             } catch (exception: Exception) {
+                // A failed refresh is not a reason to blank the screen. If a
+                // snapshot is already stored, render it with an honest staleness
+                // notice: hiding known-good numbers because DNS is down is worse
+                // than showing them late and saying so.
+                val stale = runCatching {
+                    com.example.erp.data.QuotesCache.getCached(getApplication())
+                }.getOrNull()
+                if (stale != null && stale.quotes.isNotEmpty()) {
+                    // sample = false: history records confirmed rates only, and
+                    // re-sampling the same stored numbers would pollute it.
+                    applyQuotes(stale.quotes, sample = false)
+                    // applyQuotes swallows its own failures, so only claim the
+                    // snapshot rendered if it actually produced quotes.
+                    if (_uiState.value.quotes.isNotEmpty()) {
+                        _uiState.update {
+                            it.copy(isStale = true, staleSinceEpochMillis = stale.timestamp)
+                        }
+                        return@launch
+                    }
+                }
                 _uiState.update { state ->
                     state.copy(
                         loading = false,
@@ -129,8 +153,11 @@ open class DolarViewModel @JvmOverloads constructor(
      * Turns raw quotes into UI state. Shared by the cached and the network path
      * so both produce the same "today vs next rate" split and the same history
      * sampling — a cached render must not differ from a fresh one.
+     *
+     * @param sample when false the quotes are already-stored numbers, so they
+     *   are rendered but never recorded as new history samples.
      */
-    private suspend fun applyQuotes(rawQuotes: List<DolarQuote>) {
+    private suspend fun applyQuotes(rawQuotes: List<DolarQuote>, sample: Boolean = true) {
         runCatching {
             rawApiQuotes = rawQuotes
             val today = java.time.LocalDate.now()
@@ -191,7 +218,10 @@ open class DolarViewModel @JvmOverloads constructor(
                 val selected = sortedQuotes.firstOrNull { it.fuente == _uiState.value.selectedFuente }
                     ?: sortedQuotes.firstOrNull()
                 val historial = selected
-                    ?.let { sampleAndPersist(todayQuotes).filter { sample -> sample.fuente == it.fuente } }
+                    ?.let { quote ->
+                        val available = if (sample) sampleAndPersist(todayQuotes) else historySamples
+                        available.filter { it.fuente == quote.fuente }
+                    }
                     ?: emptyList()
 
                 // La "proxima tasa" es el quote futuro de la fuente seleccionada
@@ -208,6 +238,10 @@ open class DolarViewModel @JvmOverloads constructor(
                         historial = historial,
                         loading = false,
                         error = null,
+                        // Whatever reached this point is the best render we have;
+                        // any earlier staleness mark no longer applies.
+                        isStale = false,
+                        staleSinceEpochMillis = null,
                         futureQuote = futureForSelected
                     )
                 }
