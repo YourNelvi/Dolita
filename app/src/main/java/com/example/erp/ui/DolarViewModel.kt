@@ -179,8 +179,17 @@ open class DolarViewModel @JvmOverloads constructor(
                     }
                 }
 
-                val selected = todayQuotes.firstOrNull { it.fuente == _uiState.value.selectedFuente }
-                    ?: todayQuotes.firstOrNull()
+                // The source selector renders in this order, so it is fixed here
+                // instead of inherited from whichever worker wrote last: a
+                // refreshed cache entry used to land last, and the tabs
+                // rearranged themselves between runs.
+                val canonicalOrder = listOf("usd", "eur", "usdt")
+                val sortedQuotes = todayQuotes.sortedBy {
+                    canonicalOrder.indexOf(it.fuente).let { if (it < 0) canonicalOrder.size else it }
+                }
+
+                val selected = sortedQuotes.firstOrNull { it.fuente == _uiState.value.selectedFuente }
+                    ?: sortedQuotes.firstOrNull()
                 val historial = selected
                     ?.let { sampleAndPersist(todayQuotes).filter { sample -> sample.fuente == it.fuente } }
                     ?: emptyList()
@@ -194,7 +203,7 @@ open class DolarViewModel @JvmOverloads constructor(
 
                 _uiState.update {
                     it.copy(
-                        quotes = todayQuotes,
+                        quotes = sortedQuotes,
                         selectedFuente = selected?.fuente ?: it.selectedFuente,
                         historial = historial,
                         loading = false,

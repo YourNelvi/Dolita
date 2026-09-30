@@ -76,13 +76,22 @@ object QuotesCache {
      * Replaces the entry for [quote]'s source and leaves every other source
      * untouched. `save` overwrites the whole snapshot, so a worker that
      * refreshed only one market would otherwise erase the others.
+     *
+     * An existing source is replaced IN PLACE. Rebuilding the list as
+     * `filterNot { it } + quote` moved the refreshed source to the end, which
+     * made the stored order depend on whichever worker wrote last — and the
+     * tabs in the UI are rendered in stored order, so the source selector used
+     * to rearrange itself between runs.
      */
     suspend fun upsert(context: Context, quote: DolarQuote) = withContext(Dispatchers.IO) {
         val existing = readCachedSync(getPrefs(context))
-        val merged = existing?.quotes
-            ?.filterNot { it.fuente == quote.fuente }
-            ?.plus(quote)
-            ?: listOf(quote)
+        val current = existing?.quotes.orEmpty()
+        val index = current.indexOfFirst { it.fuente == quote.fuente }
+        val merged = if (index >= 0) {
+            current.toMutableList().apply { this[index] = quote }
+        } else {
+            current + quote
+        }
         save(merged, context)
     }
 
