@@ -87,7 +87,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.erp.data.DolarQuote
 import com.example.erp.data.Error as AppError
-import com.example.erp.data.HISTORICO_DIAS
+import com.example.erp.data.HISTORICO_PUNTOS
 import com.example.erp.data.RateSample
 import com.example.erp.data.ThemeMode
 import com.example.erp.ui.components.CalculatorCard
@@ -977,7 +977,7 @@ private fun HistoricoChartCard(samples: List<com.example.erp.data.RateSample>) {
     val title = remember(samples) { historicoTitle(samples) }
     val isHourly = remember(samples) { samples.any { it.fuente == "usdt" } }
     val maxPoints = remember(samples) {
-        if (isHourly) HISTORICO_MUESTRAS_HORARIAS else HISTORICO_DIAS
+        if (isHourly) HISTORICO_MUESTRAS_HORARIAS else HISTORICO_PUNTOS
     }
 
     Card(

@@ -1,6 +1,6 @@
 package com.example.erp.ui
 
-import com.example.erp.data.HISTORICO_DIAS
+import com.example.erp.data.HISTORICO_PUNTOS
 import com.example.erp.data.RateSample
 import com.example.erp.data.chartValues
 import com.example.erp.data.localDateOf
@@ -22,17 +22,15 @@ const val HISTORICO_MUESTRAS_HORARIAS = 48
 private const val HINT = "(toca un punto para ver precio)"
 
 /**
- * The chart header, stated from the samples that actually exist.
+ * The chart header, stating what the axis actually spans.
  *
- * A hardcoded window is a promise the data cannot keep. Right after a fresh
- * install the parallel series holds one sample and grows only from live
- * sampling, while the BCV series backfills from the API — yet both headers used
- * to advertise a full window. That is how a chart teaches its reader to distrust
- * it.
+ * `maxPoints` counts SAMPLES, but the axis spans CALENDAR time, and BCV does not
+ * publish on weekends — so a full chart reads "Últimos 22 días", not 15. The
+ * header has to name the span the reader is looking at; a label that echoed the
+ * point count would contradict the dates printed directly beneath it.
  *
- * The BCV span is measured in calendar days from oldest to newest, not as a
- * count of stored samples: BCV does not publish on weekends, so counting samples
- * would report fewer days than the axis actually draws.
+ * This function mirrors the chart's own `takeLast(maxPoints)` so the header and
+ * the drawn line can never describe different ranges.
  */
 fun historicoTitle(
     samples: List<RateSample>,
@@ -40,25 +38,23 @@ fun historicoTitle(
 ): String {
     if (samples.isEmpty()) return "Histórico $HINT"
 
-    // USDT is sampled hourly and the BCV sources daily; labelling an hourly
-    // series in days would understate how much of it there is.
-    if (samples.any { it.fuente == "usdt" }) {
-        val total = samples.size
-        return if (total >= HISTORICO_MUESTRAS_HORARIAS) {
+    val isHourly = samples.any { it.fuente == "usdt" }
+    val maxPoints = if (isHourly) HISTORICO_MUESTRAS_HORARIAS else HISTORICO_PUNTOS
+    val drawn = samples.sortedBy { it.timestampEpochMillis }.takeLast(maxPoints)
+
+    if (isHourly) {
+        return if (drawn.size >= HISTORICO_MUESTRAS_HORARIAS) {
             "Últimas $HISTORICO_MUESTRAS_HORARIAS muestras horarias $HINT"
         } else {
-            "Muestreo horario: $total de $HISTORICO_MUESTRAS_HORARIAS $HINT"
+            "Muestreo horario: ${drawn.size} de $HISTORICO_MUESTRAS_HORARIAS $HINT"
         }
     }
 
-    val days = samples.map { localDateOf(it.timestampEpochMillis, zoneId) }
+    val days = drawn.map { localDateOf(it.timestampEpochMillis, zoneId) }
     val span = ChronoUnit.DAYS.between(days.min(), days.max()) + 1
     val unit = if (span == 1L) "día" else "días"
-    return if (span >= HISTORICO_DIAS) {
-        "Últimos $HISTORICO_DIAS $unit $HINT"
-    } else {
-        "Últimos $span $unit · histórico en carga $HINT"
-    }
+    val loading = if (drawn.size < HISTORICO_PUNTOS) " · histórico en carga" else ""
+    return "Últimos $span $unit$loading $HINT"
 }
 
 /** Display row for the historical table: Fecha | Fuente | Precio | Variación. */

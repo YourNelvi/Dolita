@@ -274,11 +274,19 @@ fun dayOfYear(epochMillis: Long, zoneId: ZoneId = ZoneId.systemDefault()): Int =
     Instant.ofEpochMilli(epochMillis).atZone(zoneId).dayOfYear
 
 /**
- * How many days of history the chart claims when it can fill the window. One
- * source of truth for the backfill gate and for the chart header, so the app
- * can never promise a window it did not ask the network for.
+ * How many SAMPLES the history chart draws — points, NOT days.
+ *
+ * The distinction is not pedantic: BCV does not publish on weekends, so fifteen
+ * samples span roughly three weeks of calendar time. Anything that labels this
+ * number as days contradicts the axis it sits above. The window the reader sees
+ * is a consequence of the samples, and the chart header has to name that
+ * consequence instead.
+ *
+ * Shared by the backfill gate and the chart so the two cannot drift apart: a
+ * store needs enough samples to fill the chart, and the chart reports what those
+ * samples actually cover.
  */
-const val HISTORICO_DIAS = 15
+const val HISTORICO_PUNTOS = 15
 
 /**
  * Whether stored history still needs a backfill.
@@ -286,8 +294,12 @@ const val HISTORICO_DIAS = 15
  * Recency is not the question. "Do I have today's sample" is satisfied by a
  * single sample forever, so a store that lost its history — a data wipe, a
  * failed download — would keep passing the old gate while its chart showed a
- * fraction of the window it claims. The real question is whether the series
- * spans the window the UI advertises.
+ * fraction of the points it claims. The real question is whether the series can
+ * fill the chart AND is not stale.
+ *
+ * Counted in samples, not calendar days, to match what the chart draws: fifteen
+ * calendar days of BCV data is about eleven points, which is not the window the
+ * UI advertises.
  *
  * Future-dated days are excluded: the next rate is stored as a sample, so a
  * pending rate would otherwise count as depth that does not exist yet.
@@ -295,13 +307,13 @@ const val HISTORICO_DIAS = 15
 fun needsHistoricalBackfill(
     storedDays: List<LocalDate>,
     today: LocalDate,
-    requiredDays: Int = HISTORICO_DIAS
+    requiredSamples: Int = HISTORICO_PUNTOS
 ): Boolean {
-    val real = storedDays.filter { !it.isAfter(today) }
+    val real = storedDays.filter { !it.isAfter(today) }.distinct()
     if (real.isEmpty()) return true
     val reachesYesterday = !real.max().isBefore(today.minusDays(1))
-    val hasDepth = !real.min().isAfter(today.minusDays(requiredDays.toLong()))
-    return !(reachesYesterday && hasDepth)
+    val fillsTheChart = real.size >= requiredSamples
+    return !(reachesYesterday && fillsTheChart)
 }
 
 fun localDateOf(epochMillis: Long, zoneId: ZoneId = ZoneId.systemDefault()): LocalDate =
