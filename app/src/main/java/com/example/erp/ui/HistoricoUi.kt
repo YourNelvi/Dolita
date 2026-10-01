@@ -3,12 +3,10 @@ package com.example.erp.ui
 import com.example.erp.data.HISTORICO_PUNTOS
 import com.example.erp.data.RateSample
 import com.example.erp.data.chartValues
-import com.example.erp.data.localDateOf
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 /**
@@ -22,19 +20,25 @@ const val HISTORICO_MUESTRAS_HORARIAS = 48
 private const val HINT = "(toca un punto para ver precio)"
 
 /**
- * The chart header, stating what the axis actually spans.
+ * The chart header, stated in the unit the reader actually cares about.
  *
- * `maxPoints` counts SAMPLES, but the axis spans CALENDAR time, and BCV does not
- * publish on weekends — so a full chart reads "Últimos 22 días", not 15. The
- * header has to name the span the reader is looking at; a label that echoed the
- * point count would contradict the dates printed directly beneath it.
+ * BCV does not publish on weekends, so a Saturday and a Sunday are not days
+ * without a rate — they are not days at all for this chart. Counting calendar
+ * time therefore inflated a full chart of fifteen published days into "22 días",
+ * which reads as missing data when nothing is missing. The meaningful unit is the
+ * published day: one sample is one business day, so the header counts samples
+ * and names them as such.
  *
- * This function mirrors the chart's own `takeLast(maxPoints)` so the header and
- * the drawn line can never describe different ranges.
+ * The axis still spans more calendar dates than that count, because the weekends
+ * in between are real elapsed time; that is not a contradiction once the header
+ * says "días hábiles". Contradicting the axis means labelling fifteen points as
+ * fifteen calendar days, which is what the hardcoded string used to do.
+ *
+ * Mirrors the chart's own `takeLast(maxPoints)` so the header and the drawn line
+ * can never describe different ranges.
  */
 fun historicoTitle(
-    samples: List<RateSample>,
-    zoneId: ZoneId = ZoneId.systemDefault()
+    samples: List<RateSample>
 ): String {
     if (samples.isEmpty()) return "Histórico $HINT"
 
@@ -50,11 +54,13 @@ fun historicoTitle(
         }
     }
 
-    val days = drawn.map { localDateOf(it.timestampEpochMillis, zoneId) }
-    val span = ChronoUnit.DAYS.between(days.min(), days.max()) + 1
-    val unit = if (span == 1L) "día" else "días"
-    val loading = if (drawn.size < HISTORICO_PUNTOS) " · histórico en carga" else ""
-    return "Últimos $span $unit$loading $HINT"
+    val shown = drawn.size
+    val loading = if (shown < HISTORICO_PUNTOS) " · histórico en carga" else ""
+    return if (shown == 1) {
+        "Último día hábil$loading $HINT"
+    } else {
+        "Últimos $shown días hábiles$loading $HINT"
+    }
 }
 
 /** Display row for the historical table: Fecha | Fuente | Precio | Variación. */

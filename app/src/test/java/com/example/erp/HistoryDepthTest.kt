@@ -12,7 +12,6 @@ import org.junit.Test
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.temporal.ChronoUnit
 
 /**
  * The backfill gate and the chart header: two halves of one promise. The gate is
@@ -24,7 +23,7 @@ import java.time.temporal.ChronoUnit
 class HistoryDepthTest {
 
     private val today = LocalDate.of(2026, 10, 1)
-    private val zone = ZoneId.of("America/Caracas")
+    
 
     /** Consecutive days ending today, the way a daily BCV series accumulates. */
     private fun days(vararg offsets: Int) = offsets.map { today.minusDays(it.toLong()) }
@@ -102,48 +101,45 @@ class HistoryDepthTest {
             fuente = fuente,
             nombre = fuente.uppercase(),
             precio = 860.0,
-            timestampEpochMillis = today.minusDays(it.toLong()).atStartOfDay(zone).toInstant().toEpochMilli()
+            timestampEpochMillis = today.minusDays(it.toLong()).atStartOfDay(ZoneId.of("America/Caracas")).toInstant().toEpochMilli()
         )
     }
 
     @Test
-    fun `a full chart reports the calendar span, not the point count`() {
-        // THE REGRESSION. Fifteen BCV samples skip weekends and therefore cover
-        // 21 calendar days. The axis printed 11/09 -> 01/01-era dates while the
-        // header said "15 días"; the two disagreed in unit, not just in value.
+    fun `a full chart reports published days, not elapsed calendar time`() {
+        // THE REGRESSION, both ways. Fifteen BCV samples skip weekends and cover
+        // 21+ calendar days, but a Saturday is not a day without a rate here --
+        // it is not a day at all. Counting elapsed time called a complete chart
+        // "22 días" and read as missing data when nothing was missing.
         val offsets = publishedDayOffsets(HISTORICO_PUNTOS)
-        val expectedSpan = ChronoUnit.DAYS.between(
-            today.minusDays(offsets.max().toLong()),
-            today
-        ) + 1
 
-        val title = historicoTitle(samples("usd", offsets), zone)
+        val title = historicoTitle(samples("usd", offsets))
         assertEquals(
-            "Últimos $expectedSpan días (toca un punto para ver precio)",
+            "Últimos $HISTORICO_PUNTOS días hábiles (toca un punto para ver precio)",
             title
         )
-        // The label must not echo the point count while the axis shows more.
-        assertTrue(title, expectedSpan > HISTORICO_PUNTOS)
-        assertFalse(title, title.startsWith("Últimos $HISTORICO_PUNTOS días"))
+        // The elapsed window really is wider; the header must not adopt it.
+        assertFalse(title, title.contains("21"))
+        assertFalse(title, title.contains("22"))
     }
 
     @Test
-    fun `consecutive samples spanning fifteen days report fifteen days`() {
-        val title = historicoTitle(samples("usd", (0 until 15).toList()), zone)
-        assertEquals("Últimos 15 días (toca un punto para ver precio)", title)
+    fun `the business-day unit is named so the wider axis is not a contradiction`() {
+        val title = historicoTitle(samples("usd", publishedDayOffsets(HISTORICO_PUNTOS)))
+        assertTrue(title, title.contains("días hábiles"))
     }
 
     @Test
     fun `a short series says how short it is instead of claiming a full chart`() {
         // 29/09 -> 01/10 is the exact span seen on the device after the wipe.
-        val title = historicoTitle(samples("usd", listOf(2, 1, 0)), zone)
-        assertEquals("Últimos 3 días · histórico en carga (toca un punto para ver precio)", title)
+        val title = historicoTitle(samples("usd", listOf(2, 1, 0)))
+        assertEquals("Últimos 3 días hábiles · histórico en carga (toca un punto para ver precio)", title)
     }
 
     @Test
     fun `a single day never claims a full chart`() {
-        val title = historicoTitle(samples("usd", listOf(0)), zone)
-        assertEquals("Últimos 1 día · histórico en carga (toca un punto para ver precio)", title)
+        val title = historicoTitle(samples("usd", listOf(0)))
+        assertEquals("Último día hábil · histórico en carga (toca un punto para ver precio)", title)
     }
 
     @Test
@@ -151,20 +147,21 @@ class HistoryDepthTest {
         // The header must mirror the chart's takeLast, or it describes a longer
         // history than the one drawn underneath it.
         val offsets = (0 until 40).toList()
-        val title = historicoTitle(samples("usd", offsets), zone)
-        // takeLast(15) of 40 consecutive days spans 15 days, not 40.
-        assertEquals("Últimos 15 días (toca un punto para ver precio)", title)
+        val title = historicoTitle(samples("usd", offsets))
+        // takeLast(15) of 40 stored days: the header must say 15, not 40, or it
+        // describes a longer history than the line drawn underneath it.
+        assertEquals("Últimos 15 días hábiles (toca un punto para ver precio)", title)
     }
 
     @Test
     fun `an hourly series reports samples, not days`() {
-        val short = historicoTitle(samples("usdt", listOf(0)), zone)
+        val short = historicoTitle(samples("usdt", listOf(0)))
         assertEquals(
             "Muestreo horario: 1 de $HISTORICO_MUESTRAS_HORARIAS (toca un punto para ver precio)",
             short
         )
 
-        val full = historicoTitle(samples("usdt", (0 until HISTORICO_MUESTRAS_HORARIAS).toList()), zone)
+        val full = historicoTitle(samples("usdt", (0 until HISTORICO_MUESTRAS_HORARIAS).toList()))
         assertEquals(
             "Últimas $HISTORICO_MUESTRAS_HORARIAS muestras horarias (toca un punto para ver precio)",
             full
@@ -173,6 +170,6 @@ class HistoryDepthTest {
 
     @Test
     fun `an empty series does not claim any coverage`() {
-        assertFalse(historicoTitle(emptyList(), zone).contains("días"))
+        assertFalse(historicoTitle(emptyList()).contains("días hábiles"))
     }
 }
