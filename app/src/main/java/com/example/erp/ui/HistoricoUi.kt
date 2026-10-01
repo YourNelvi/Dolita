@@ -1,12 +1,65 @@
 package com.example.erp.ui
 
+import com.example.erp.data.HISTORICO_DIAS
 import com.example.erp.data.RateSample
 import com.example.erp.data.chartValues
+import com.example.erp.data.localDateOf
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Locale
+
+/**
+ * Hourly samples the parallel chart shows before it counts as full. The parallel
+ * series is only ever sampled live — nothing in the app fetches a historical P2P
+ * series — so after a fresh install it is legitimately short and stays that way
+ * until it has accumulated.
+ */
+const val HISTORICO_MUESTRAS_HORARIAS = 48
+
+private const val HINT = "(toca un punto para ver precio)"
+
+/**
+ * The chart header, stated from the samples that actually exist.
+ *
+ * A hardcoded window is a promise the data cannot keep. Right after a fresh
+ * install the parallel series holds one sample and grows only from live
+ * sampling, while the BCV series backfills from the API — yet both headers used
+ * to advertise a full window. That is how a chart teaches its reader to distrust
+ * it.
+ *
+ * The BCV span is measured in calendar days from oldest to newest, not as a
+ * count of stored samples: BCV does not publish on weekends, so counting samples
+ * would report fewer days than the axis actually draws.
+ */
+fun historicoTitle(
+    samples: List<RateSample>,
+    zoneId: ZoneId = ZoneId.systemDefault()
+): String {
+    if (samples.isEmpty()) return "Histórico $HINT"
+
+    // USDT is sampled hourly and the BCV sources daily; labelling an hourly
+    // series in days would understate how much of it there is.
+    if (samples.any { it.fuente == "usdt" }) {
+        val total = samples.size
+        return if (total >= HISTORICO_MUESTRAS_HORARIAS) {
+            "Últimas $HISTORICO_MUESTRAS_HORARIAS muestras horarias $HINT"
+        } else {
+            "Muestreo horario: $total de $HISTORICO_MUESTRAS_HORARIAS $HINT"
+        }
+    }
+
+    val days = samples.map { localDateOf(it.timestampEpochMillis, zoneId) }
+    val span = ChronoUnit.DAYS.between(days.min(), days.max()) + 1
+    val unit = if (span == 1L) "día" else "días"
+    return if (span >= HISTORICO_DIAS) {
+        "Últimos $HISTORICO_DIAS $unit $HINT"
+    } else {
+        "Últimos $span $unit · histórico en carga $HINT"
+    }
+}
 
 /** Display row for the historical table: Fecha | Fuente | Precio | Variación. */
 data class HistoricoRow(

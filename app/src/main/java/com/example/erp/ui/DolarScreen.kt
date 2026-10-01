@@ -87,6 +87,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.erp.data.DolarQuote
 import com.example.erp.data.Error as AppError
+import com.example.erp.data.HISTORICO_DIAS
 import com.example.erp.data.RateSample
 import com.example.erp.data.ThemeMode
 import com.example.erp.ui.components.CalculatorCard
@@ -969,16 +970,15 @@ private fun CasaChips(
 
 @Composable
 private fun HistoricoChartCard(samples: List<com.example.erp.data.RateSample>) {
-    // Detectar si los datos son por hora (USDT siempre es muestreo horario)
-    val isHourly = remember(samples) {
-        samples.any { it.fuente == "usdt" }
+    // The header states the coverage the samples actually have. It used to be a
+    // hardcoded "Últimos 15 días", which lied on a fresh install and permanently
+    // for the parallel series — nothing fetches a historical P2P rate, so that
+    // chart can only ever hold what was sampled live.
+    val title = remember(samples) { historicoTitle(samples) }
+    val isHourly = remember(samples) { samples.any { it.fuente == "usdt" } }
+    val maxPoints = remember(samples) {
+        if (isHourly) HISTORICO_MUESTRAS_HORARIAS else HISTORICO_DIAS
     }
-
-    val maxPoints = if (isHourly) 48 else 15
-    val title = if (isHourly)
-        "Últimas 48 muestras horarias (toca un punto para ver precio)"
-    else
-        "Últimos 15 días (toca un punto para ver precio)"
 
     Card(
         shape = RoundedCornerShape(16.dp),

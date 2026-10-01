@@ -96,15 +96,14 @@ class FileHistoryStore(
         // just to merge samples that were already on disk. If the store already
         // reaches yesterday, any newer day simply has not been published yet.
         //
-        // Future-dated samples are excluded on purpose: the "next rate" is
-        // stored as a sample, so taking the newest timestamp would let a pending
-        // rate masquerade as a complete history and suppress the fetch for days.
+        // Recency alone turned out to be the wrong gate. A store holding only
+        // today's sample satisfies "reaches yesterday" forever, so after a data
+        // wipe the series never regained depth and the chart under-filled its
+        // window for good. See [needsHistoricalBackfill].
         val today = java.time.LocalDate.now(zoneId)
-        val newestStoredDay = readCurrentYear()
-            .map { localDateOf(it.timestampEpochMillis, zoneId) }
-            .filter { !it.isAfter(today) }
-            .maxOrNull()
-        if (newestStoredDay != null && !newestStoredDay.isBefore(today.minusDays(1))) {
+        val storedDays = readCurrentYear().map { localDateOf(it.timestampEpochMillis, zoneId) }
+        if (!needsHistoricalBackfill(storedDays, today)) {
+            val newestStoredDay = storedDays.filter { !it.isAfter(today) }.max()
             android.util.Log.d("RateHistoryStore", "History already current through $newestStoredDay; skipping fetch")
             return
         }
@@ -273,6 +272,37 @@ fun yearOf(epochMillis: Long, zoneId: ZoneId = ZoneId.systemDefault()): Int =
 
 fun dayOfYear(epochMillis: Long, zoneId: ZoneId = ZoneId.systemDefault()): Int =
     Instant.ofEpochMilli(epochMillis).atZone(zoneId).dayOfYear
+
+/**
+ * How many days of history the chart claims when it can fill the window. One
+ * source of truth for the backfill gate and for the chart header, so the app
+ * can never promise a window it did not ask the network for.
+ */
+const val HISTORICO_DIAS = 15
+
+/**
+ * Whether stored history still needs a backfill.
+ *
+ * Recency is not the question. "Do I have today's sample" is satisfied by a
+ * single sample forever, so a store that lost its history — a data wipe, a
+ * failed download — would keep passing the old gate while its chart showed a
+ * fraction of the window it claims. The real question is whether the series
+ * spans the window the UI advertises.
+ *
+ * Future-dated days are excluded: the next rate is stored as a sample, so a
+ * pending rate would otherwise count as depth that does not exist yet.
+ */
+fun needsHistoricalBackfill(
+    storedDays: List<LocalDate>,
+    today: LocalDate,
+    requiredDays: Int = HISTORICO_DIAS
+): Boolean {
+    val real = storedDays.filter { !it.isAfter(today) }
+    if (real.isEmpty()) return true
+    val reachesYesterday = !real.max().isBefore(today.minusDays(1))
+    val hasDepth = !real.min().isAfter(today.minusDays(requiredDays.toLong()))
+    return !(reachesYesterday && hasDepth)
+}
 
 fun localDateOf(epochMillis: Long, zoneId: ZoneId = ZoneId.systemDefault()): LocalDate =
     Instant.ofEpochMilli(epochMillis).atZone(zoneId).toLocalDate()
