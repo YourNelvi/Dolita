@@ -3,11 +3,17 @@ package com.example.erp.ui.components
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -30,12 +37,15 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.erp.data.HISTORICO_PUNTOS
 import com.example.erp.data.RateSample
 import com.example.erp.ui.theme.DownRedLight
 import com.example.erp.ui.theme.FintechSignalRed
 import com.example.erp.ui.theme.accentColor
+import com.example.erp.ui.theme.cardBorderColor
 import com.example.erp.ui.theme.positiveColor
 import com.example.erp.ui.theme.isDarkTheme
 import java.text.NumberFormat
@@ -45,6 +55,26 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.min
+
+// Tabular figures: fifteen prices only read as columns when every digit is the
+// same width. Same reason CalculatorCard pins it on its amount field.
+private const val TabularFigures = "tnum"
+
+/**
+ * One X axis label, anchored per position. A centered label sitting on the plot
+ * padding hangs off the canvas and clips the very date it names, so the first
+ * label is left-aligned and the last one right-aligned.
+ */
+private fun axisLabelPaint(
+    labelColor: Color,
+    textSizePx: Float,
+    align: android.graphics.Paint.Align
+) = android.graphics.Paint().apply {
+    color = labelColor.toArgb()
+    textSize = textSizePx
+    textAlign = align
+    isAntiAlias = true
+}
 
 /** Negative signal red, shared with the quote list so both read identically. */
 @Composable
@@ -76,7 +106,10 @@ fun EvolutionChart(
     // which disappears against the dark card surface.
     lineColor: Color = accentColor(),
     modifier: Modifier = Modifier,
-    maxPoints: Int = 15,
+    // The daily window is defined by the store that feeds the chart, not by a
+    // literal here: the same constant decides the backfill depth, so a retype
+    // here would let the chart claim a window the data was never asked for.
+    maxPoints: Int = HISTORICO_PUNTOS,
     showHours: Boolean = false,
     zoneId: ZoneId = ZoneId.systemDefault(),
     locale: Locale = Locale.getDefault()
@@ -145,12 +178,18 @@ fun EvolutionChart(
     val smallTextSizePx = with(density) { 10.sp.toPx() }
 
     val labelPaint = remember(onSurface) {
-        android.graphics.Paint().apply {
-            color = onSurface.toArgb()
-            textSize = smallTextSizePx
-            textAlign = android.graphics.Paint.Align.CENTER
-            isAntiAlias = true
-        }
+        axisLabelPaint(onSurface, smallTextSizePx, android.graphics.Paint.Align.CENTER)
+    }
+    val firstLabelPaint = remember(onSurface) {
+        axisLabelPaint(onSurface, smallTextSizePx, android.graphics.Paint.Align.LEFT)
+    }
+    val lastLabelPaint = remember(onSurface) {
+        axisLabelPaint(onSurface, smallTextSizePx, android.graphics.Paint.Align.RIGHT)
+    }
+    // Computed here, not inside the Canvas: which points are named is a property
+    // of the series, and the grid below reuses this same list to stay in step.
+    val axisLabelIndices = remember(sorted.size) {
+        xAxisLabelIndices(sorted.size, X_AXIS_MAX_LABELS)
     }
 
     Box(modifier = modifier.fillMaxWidth()) {
@@ -165,14 +204,19 @@ fun EvolutionChart(
                         val canvasWidth = size.width.toFloat()
                         val padding = 24f
                         val chartWidth = canvasWidth - padding * 2
-                        val firstTimestamp = sorted.first().timestampEpochMillis
-                        val lastTimestamp = sorted.last().timestampEpochMillis
-                        val totalDuration = if (lastTimestamp > firstTimestamp) lastTimestamp - firstTimestamp else 1L
-                        // Encontrar el punto mas cercano al toque usando fechas reales
+                        // Same index-based placement the drawing code uses. The
+                        // tap used to resolve against calendar time, so after the
+                        // axis moved to per-publish spacing a touch would have
+                        // selected the wrong point — the highlight is the only
+                        // feedback for a wrong hit.
                         var closestIdx = 0
                         var closestDist = Float.MAX_VALUE
-                        sorted.forEachIndexed { idx, sample ->
-                            val xRatio = (sample.timestampEpochMillis - firstTimestamp).toFloat() / totalDuration.toFloat()
+                        sorted.forEachIndexed { idx, _ ->
+                            val xRatio = if (sorted.size > 1) {
+                                idx.toFloat() / (sorted.size - 1).toFloat()
+                            } else {
+                                0f
+                            }
                             val x = padding + xRatio * chartWidth
                             val dist = abs(offset.x - x)
                             if (dist < closestDist) {
@@ -213,9 +257,21 @@ fun EvolutionChart(
                 )
             }
 
-            // Calcular puntos usando fechas reales
-            val points = sorted.map { sample ->
-                val xRatio = (sample.timestampEpochMillis - firstTimestamp).toFloat() / totalDuration.toFloat()
+            // One slot per PUBLISHED rate, evenly spaced by index.
+            //
+            // The X axis used to be calendar time, which made every weekend a
+            // flat two-day stretch with no dots on it: the line looked frozen
+            // because the BCV simply does not publish on Saturday and Sunday.
+            // That reads as "nothing happened" when the truth is "the market was
+            // closed". The reader asked for the history of changes, so each
+            // point is one change and the spacing says nothing about the gap
+            // between two of them.
+            val points = sorted.mapIndexed { index, sample ->
+                val xRatio = if (sorted.size > 1) {
+                    index.toFloat() / (sorted.size - 1).toFloat()
+                } else {
+                    0f
+                }
                 val x = padding + xRatio * chartWidth
                 val normalized = (sample.precio - minPrice) / range
                 val y = padding + chartHeight - (chartHeight * normalized.toFloat())
@@ -279,21 +335,19 @@ fun EvolutionChart(
             }
             } // end clipRect reveal
 
-            // Etiquetas de eje X (primeros, ultimo, y seleccionado)
-            // Primera fecha
-            drawContext.canvas.nativeCanvas.drawText(
-                dayFormat.format(Instant.ofEpochMilli(sorted.first().timestampEpochMillis)),
-                points.first().x,
-                canvasHeight - 2f,
-                labelPaint
-            )
-            // Ultima fecha (si hay mas de 1 punto)
-            if (sorted.size > 1) {
+            // Etiquetas de eje X: los puntos que caben, con los dos extremos
+            // siempre nombrados y anclados hacia adentro para no recortarse.
+            axisLabelIndices.forEach { index ->
+                val paint = when (index) {
+                    0 -> firstLabelPaint
+                    sorted.size - 1 -> lastLabelPaint
+                    else -> labelPaint
+                }
                 drawContext.canvas.nativeCanvas.drawText(
-                    dayFormat.format(Instant.ofEpochMilli(sorted.last().timestampEpochMillis)),
-                    points.last().x,
+                    dayFormat.format(Instant.ofEpochMilli(sorted[index].timestampEpochMillis)),
+                    points[index].x,
                     canvasHeight - 2f,
-                    labelPaint
+                    paint
                 )
             }
         }
@@ -343,6 +397,74 @@ fun EvolutionChart(
                         )
                     }
                 }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        HistoryGrid(samples = sorted, dayFormat = dayFormat, priceFormat = priceFormat)
+    }
+}
+
+/**
+ * The whole drawn series as a compact grid: date over price, three across.
+ *
+ * The axis can only name a handful of dates, so this block is what actually
+ * delivers "every update with its date". It renders the very list the canvas
+ * drew — same samples, same order, no second selection — so the line and the
+ * numbers underneath it cannot describe different windows.
+ */
+@Composable
+private fun HistoryGrid(
+    samples: List<RateSample>,
+    dayFormat: DateTimeFormatter,
+    priceFormat: NumberFormat
+) {
+    if (samples.isEmpty()) return
+    val accent = accentColor()
+    val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val hairline = cardBorderColor()
+    val cellShape = RoundedCornerShape(8.dp)
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        historyGridRows(samples).forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                row.forEach { sample ->
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(cellShape)
+                            .border(1.dp, hairline, cellShape)
+                            .padding(vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // The hourly series carries the clock too, so the same
+                        // formatter names a time instead of a bare day.
+                        Text(
+                            text = dayFormat.format(Instant.ofEpochMilli(sample.timestampEpochMillis)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = mutedColor,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = "$${priceFormat.format(sample.precio)}",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontFeatureSettings = TabularFigures
+                            ),
+                            // Accent is spent on the numbers only, dates stay muted.
+                            color = accent,
+                            maxLines = 1
+                        )
+                    }
+                }
+                // Empty slots keep a short last row under the columns above it.
+                repeat(HISTORY_GRID_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }

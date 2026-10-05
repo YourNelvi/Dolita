@@ -764,8 +764,12 @@ private fun FeaturedCard(
                 }
                 gapPerDollar?.let { gap ->
                     Spacer(Modifier.height(2.dp))
+                    // Bolívares, never dollars: the gap is what one extra dollar
+                    // costs on the parallel, so the "$" of featFormatPrice read as
+                    // "105,43 dollars" — off by the price of a dollar, and the
+                    // calculator states the very same figure as "Bs 105,43".
                     Text(
-                        text = "Son ${featFormatPrice(abs(gap))} por dólar",
+                        text = "Son Bs ${featPriceFormatter.format(abs(gap))} por dólar",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -999,9 +1003,9 @@ private fun HistoricoChartCard(samples: List<com.example.erp.data.RateSample>) {
                 samples = samples,
                 maxPoints = maxPoints,
                 showHours = isHourly,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp)
+                // No fixed height: the chart also renders the dated grid of every
+                // drawn point, so the card has to grow with the series.
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
