@@ -2,6 +2,34 @@ package com.example.erp.data
 
 import java.math.BigDecimal
 import java.math.RoundingMode
+import kotlin.math.abs
+
+/**
+ * The cambiario differential, quoted the way the market quotes it: the parallel
+ * measured against the OFFICIAL rate.
+ *
+ * Both sides have to agree on the number. Measuring over whichever rate the open
+ * tab happened to hold made one fact read two ways on one screen — +13,65% on
+ * the official tab and −12,01% on the parallel tab, for a gap of Bs 119,08 per
+ * dollar that both tabs already reported identically. Naming the reference side
+ * is what makes the figure a fact instead of a function of where you are.
+ */
+data class DifferentialGap(
+    val percent: Double,
+    val perUnit: Double,
+    val parallelAbove: Boolean
+)
+
+/** Null when either rate is unusable — an undrawn gap beats a fabricated one. */
+fun differentialGap(parallelRate: Double, officialRate: Double): DifferentialGap? {
+    if (parallelRate <= 0.0 || officialRate <= 0.0) return null
+    val gap = parallelRate - officialRate
+    return DifferentialGap(
+        percent = (gap / officialRate) * 100.0,
+        perUnit = abs(gap),
+        parallelAbove = gap > 0
+    )
+}
 
 /**
  * What the parallel tab owes its reader once an amount is entered: what that

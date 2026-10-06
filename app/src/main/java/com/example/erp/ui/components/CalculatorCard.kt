@@ -352,9 +352,22 @@ fun CalculatorCard(
                 // and cannot be misread as a second conversion of the same
                 // amount, which is what "EUR 1,00 -> Bs 1.082,38" looked like
                 // two lines under "1 EUR = 974,71 Bs".
-                val gapPercent = ((alternativeRate - rate) / rate) * 100.0
-                val gapPerUnit = abs(alternativeRate - rate)
-                val gapUp = alternativeRate > rate
+                //
+                // The gap is always quoted over the OFFICIAL rate, on every tab,
+                // so the official and parallel views report the same number for
+                // the same market instead of two figures that read as two facts.
+                val officialReference = if (quote.fuente == "usdt") {
+                    // On the parallel tab the selected rate IS the parallel, so
+                    // the official side is the alternative.
+                    usdRate ?: rate
+                } else {
+                    rate
+                }
+                val parallelSide = if (quote.fuente == "usdt") rate else alternativeRate
+                val gap = com.example.erp.data.differentialGap(parallelSide, officialReference)
+                val gapPercent = gap?.percent ?: 0.0
+                val gapPerUnit = gap?.perUnit ?: 0.0
+                val gapUp = gap?.parallelAbove ?: false
 
                 Spacer(Modifier.height(14.dp))
                 androidx.compose.material3.HorizontalDivider(
