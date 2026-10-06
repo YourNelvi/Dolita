@@ -82,18 +82,110 @@ private fun negativeColor(): Color =
     if (isDarkTheme()) FintechSignalRed else DownRedLight
 
 /**
- * Builds a smooth cubic (Bézier) spline through [points] using horizontal
- * control handles, so the series renders as a curve instead of straight
- * segments. One point draws nothing (a lone moveTo is not a visible stroke).
+ * How many dates the X axis may name at once. Fifteen `dd/MM` labels cannot fit
+ * a phone width without overlapping, so the axis names a readable subset and the
+ * tap on a point still reports the exact date.
+ */
+internal const val X_AXIS_MAX_LABELS = 5
+
+/**
+ * Which sample indices the X axis should label: the first and last always, the
+ * rest spread as evenly as possible, never more than [maxLabels].
+ *
+ * Returning only what fits is what lets the axis name more than the two endpoints
+ * without drawing a wall of overlapping dates.
+ */
+internal fun xAxisLabelIndices(count: Int, maxLabels: Int): List<Int> {
+    if (count <= 0) return emptyList()
+    if (count == 1) return listOf(0)
+    val wanted = maxLabels.coerceIn(2, count)
+    if (wanted == 2) return listOf(0, count - 1)
+    return (0 until wanted).map { i ->
+        Math.round(i * (count - 1).toFloat() / (wanted - 1).toFloat()).toInt()
+    }.distinct()
+}
+
+/**
+ * Fritsch-Carlson tangent limiter: produces the slope at each sample that makes
+ * a Hermite curve pass through every one of them WITHOUT overshooting between
+ * two of them.
+ *
+ * This replaced fixed horizontal Bézier handles, which overshoot wherever the
+ * direction changes. On the official dollar that went unnoticed because the rate
+ * only ever rises; on the euro, which tracks the international cross and does
+ * fall as well as rise, every turn of the series grew a peak that no published
+ * rate ever reached. The data was honest and the drawing invented the drama.
+ */
+internal fun monotoneTangents(points: List<Offset>): FloatArray {
+    val n = points.size
+    if (n < 2) return FloatArray(n)
+    val slopes = FloatArray(n - 1)
+    for (i in 0 until n - 1) {
+        val dx = points[i + 1].x - points[i].x
+        slopes[i] = if (dx == 0f) 0f else (points[i + 1].y - points[i].y) / dx
+    }
+    val m = FloatArray(n)
+    m[0] = slopes[0]
+    m[n - 1] = slopes[n - 2]
+    for (i in 1 until n - 1) m[i] = (slopes[i - 1] + slopes[i]) / 2f
+    // A peak or a trough has to leave horizontally. Averaging the two slopes
+    // around an extremum can leave a tangent pointing back across it, and the
+    // curve then swings past the turning point and draws an excursion the rate
+    // never made. This is the case the euro series hits on every direction
+    // change, which is why its line used to look mountainous.
+    for (i in 1 until n - 1) {
+        if (slopes[i - 1] * slopes[i] < 0f) m[i] = 0f
+    }
+    for (i in 0 until n - 1) {
+        if (slopes[i] == 0f) {
+            // A flat step keeps the curve flat across it instead of letting the
+            // neighbouring slopes dive through it.
+            m[i] = 0f
+            m[i + 1] = 0f
+            continue
+        }
+        val a = m[i] / slopes[i]
+        val b = m[i + 1] / slopes[i]
+        val magnitude = a * a + b * b
+        if (magnitude > 9f) {
+            val scale = 3f / kotlin.math.sqrt(magnitude)
+            m[i] = scale * a * slopes[i]
+            m[i + 1] = scale * b * slopes[i]
+        }
+    }
+    return m
+}
+
+/**
+ * Y of the monotone Hermite segment at [t], for unit x spacing — which is how
+ * the chart spaces samples, one slot per published rate. Exposed so the
+ * no-overshoot property can be asserted directly instead of eyeballed.
+ */
+internal fun hermiteY(y0: Float, y1: Float, m0: Float, m1: Float, t: Float): Float {
+    val t2 = t * t
+    val t3 = t2 * t
+    return (2f * t3 - 3f * t2 + 1f) * y0 + (t3 - 2f * t2 + t) * m0 +
+        (-2f * t3 + 3f * t2) * y1 + (t3 - t2) * m1
+}
+
+/**
+ * Draws the series as a smooth curve that cannot leave the corridor between
+ * consecutive samples. One point draws nothing (a lone moveTo is not a stroke).
  */
 private fun Path.addSmoothSpline(points: List<Offset>) {
     if (points.isEmpty()) return
     moveTo(points.first().x, points.first().y)
+    if (points.size < 2) return
+    val m = monotoneTangents(points)
     for (i in 0 until points.size - 1) {
         val start = points[i]
         val end = points[i + 1]
-        val handle = (end.x - start.x) * 0.4f
-        cubicTo(start.x + handle, start.y, end.x - handle, end.y, end.x, end.y)
+        val h = (end.x - start.x) / 3f
+        cubicTo(
+            start.x + h, start.y + m[i] * h,
+            end.x - h, end.y - m[i + 1] * h,
+            end.x, end.y
+        )
     }
 }
 
@@ -192,7 +284,8 @@ fun EvolutionChart(
         xAxisLabelIndices(sorted.size, X_AXIS_MAX_LABELS)
     }
 
-    Box(modifier = modifier.fillMaxWidth()) {
+    Column(modifier = modifier.fillMaxWidth()) {
+    Box(modifier = Modifier.fillMaxWidth()) {
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
@@ -399,73 +492,6 @@ fun EvolutionChart(
                 }
             }
         }
-
-        Spacer(Modifier.height(12.dp))
-        HistoryGrid(samples = sorted, dayFormat = dayFormat, priceFormat = priceFormat)
     }
-}
-
-/**
- * The whole drawn series as a compact grid: date over price, three across.
- *
- * The axis can only name a handful of dates, so this block is what actually
- * delivers "every update with its date". It renders the very list the canvas
- * drew — same samples, same order, no second selection — so the line and the
- * numbers underneath it cannot describe different windows.
- */
-@Composable
-private fun HistoryGrid(
-    samples: List<RateSample>,
-    dayFormat: DateTimeFormatter,
-    priceFormat: NumberFormat
-) {
-    if (samples.isEmpty()) return
-    val accent = accentColor()
-    val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val hairline = cardBorderColor()
-    val cellShape = RoundedCornerShape(8.dp)
-
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        historyGridRows(samples).forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                row.forEach { sample ->
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(cellShape)
-                            .border(1.dp, hairline, cellShape)
-                            .padding(vertical = 6.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        // The hourly series carries the clock too, so the same
-                        // formatter names a time instead of a bare day.
-                        Text(
-                            text = dayFormat.format(Instant.ofEpochMilli(sample.timestampEpochMillis)),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = mutedColor,
-                            maxLines = 1
-                        )
-                        Text(
-                            text = "$${priceFormat.format(sample.precio)}",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontFeatureSettings = TabularFigures
-                            ),
-                            // Accent is spent on the numbers only, dates stay muted.
-                            color = accent,
-                            maxLines = 1
-                        )
-                    }
-                }
-                // Empty slots keep a short last row under the columns above it.
-                repeat(HISTORY_GRID_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
-            }
-        }
     }
 }
