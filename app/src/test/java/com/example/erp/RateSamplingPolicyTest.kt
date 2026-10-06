@@ -52,10 +52,12 @@ class RateSamplingPolicyTest {
             usdtSampledThisSession = false,
             zoneId = caracas
         )
-        assertEquals(listOf("usd", "eur"), first.map { it.fuente })
+assertEquals(listOf("usd", "eur"), first.map { it.fuente })
         assertEquals(773.31, first.first { it.fuente == "usd" }.precio, 0.0)
 
-        // Now with a different price — should always produce new samples (replace seed data)
+        // The dollar moved, the euro did not. A sample is a change, so only the
+        // dollar earns a new one; writing the euro again would put a point on the
+        // chart where the rate never moved.
         val updatedUsd = usdQuote.copy(promedio = 780.00)
         val second = RateSamplingPolicy.shouldSample(
             existing = first,
@@ -64,7 +66,7 @@ class RateSamplingPolicyTest {
             usdtSampledThisSession = false,
             zoneId = caracas
         )
-        assertEquals(listOf("usd", "eur"), second.map { it.fuente })
+        assertEquals(listOf("usd"), second.map { it.fuente })
         assertEquals(780.00, second.first { it.fuente == "usd" }.precio, 0.0)
     }
 
@@ -74,7 +76,7 @@ class RateSamplingPolicyTest {
             RateSample(
                 fuente = "usd",
                 nombre = "Dólar (BCV)",
-                precio = 773.31,
+                precio = 770.00,
                 timestampEpochMillis = morningEpochMillis
             )
         )

@@ -10,6 +10,7 @@ import java.io.File
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -79,7 +80,32 @@ class FileHistoryStore(
             val currentYearFile = File(dir, rateYearName(System.currentTimeMillis(), zoneId))
             if (!currentYearFile.exists() || currentYearFile.length() == 0L) {
                 // No fake seed — leave empty until real data arrives
+                return@withContext
             }
+            // Repair history written before a sample meant a change. Sampling
+            // unconditionally stored the last published rate under Saturday and
+            // Sunday, and those points are still on disk for whoever already had
+            // the app. The BCV publishes on neither day: zero of 904 records at
+            // the source fall on a weekend.
+            purgeBcvWeekendSamples(currentYearFile)
+        }
+    }
+
+    /** Drops BCV samples dated Saturday or Sunday, keeping every other source. */
+    private fun purgeBcvWeekendSamples(file: File) {
+        val stored = readSamples(file)
+        val kept = stored.filterNot { sample ->
+            val weekend = localDateOf(sample.timestampEpochMillis, zoneId).dayOfWeek.let {
+                it == DayOfWeek.SATURDAY || it == DayOfWeek.SUNDAY
+            }
+            weekend && (sample.fuente == "usd" || sample.fuente == "eur")
+        }
+        if (kept.size != stored.size) {
+            android.util.Log.d(
+                "RateHistoryStore",
+                "Dropped ${stored.size - kept.size} BCV weekend samples with no published rate"
+            )
+            writeAtomically(file, RateHistoryCodec.encode(kept))
         }
     }
 
@@ -351,17 +377,33 @@ object RateSamplingPolicy {
         quotes.forEach { quote ->
             when (quote.fuente) {
                 "usd", "eur" -> {
-                    // Always sample today (overwrites seed data)
-                    newSamples.add(
-                        RateSample(
-                            fuente = quote.fuente,
-                            nombre = quote.nombre,
-                            precio = quote.promedio,
-                            timestampEpochMillis = nowEpochMillis,
-                            anterior = quote.anterior,
-                            variacion = quote.variacion
+                    // A sample IS a change. BCV serves the last published rate on
+                    // days it does not update -- Saturday and Sunday included --
+                    // so sampling unconditionally stored the Friday rate a second
+                    // time under Saturday's date, and the series grew a point
+                    // where nothing happened. The chart then had to draw those
+                    // flat runs as if they were history.
+                    //
+                    // Comparing the price against the newest stored one keeps the
+                    // series to real moves whatever the reason a day is missing:
+                    // a weekend, a holiday, or simply an unchanged rate.
+                    val lastStored = existing
+                        .filter { it.fuente == quote.fuente }
+                        .filter { !localDateOf(it.timestampEpochMillis, zoneId).isAfter(today) }
+                        .maxByOrNull { it.timestampEpochMillis }
+                    val changed = lastStored == null || lastStored.precio != quote.promedio
+                    if (changed) {
+                        newSamples.add(
+                            RateSample(
+                                fuente = quote.fuente,
+                                nombre = quote.nombre,
+                                precio = quote.promedio,
+                                timestampEpochMillis = nowEpochMillis,
+                                anterior = quote.anterior,
+                                variacion = quote.variacion
+                            )
                         )
-                    )
+                    }
                     // Also sample the "previous" date from the API if different from today
                     if (previousDateMillis != null && quote.anterior != null) {
                         val prevDate = localDateOf(previousDateMillis, zoneId)
