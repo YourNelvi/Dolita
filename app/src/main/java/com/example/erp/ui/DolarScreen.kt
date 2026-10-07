@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.CurrencyExchange
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Tune
@@ -463,6 +464,61 @@ private fun HairlineAction(
 }
 
 /**
+ * Share a rate as plain text, in the same voice as [HairlineAction]: flat, a
+ * hairline border, no Material elevation and no tonal fill. A filled M3 pill
+ * here would outshout the number it belongs to.
+ *
+ * Text and not a picture: the reader pastes this into a chat, where a rendered
+ * image of a number is a worse number than the number itself.
+ *
+ * The tap does nothing when there is no quote to describe. An empty share sheet
+ * is a dead control, not a harmless one, so the guard returns before anything is
+ * launched.
+ */
+@Composable
+private fun ShareRateAction(
+    quote: DolarQuote?,
+    highPrecision: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val shape = RoundedCornerShape(10.dp)
+    Surface(
+        shape = shape,
+        color = Color.Transparent,
+        border = androidx.compose.foundation.BorderStroke(1.dp, cardBorderColor()),
+        modifier = modifier
+            // Clip before the click so the touch area is the rounded square the
+            // eye sees, not the untrimmed bounds behind it.
+            .clip(shape)
+            .clickable {
+                val text = RateShareText.build(
+                    quote = quote,
+                    highPrecision = highPrecision
+                ) ?: return@clickable
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_TEXT, text)
+                }
+                context.startActivity(
+                    android.content.Intent.createChooser(send, "Compartir tasa")
+                )
+            }
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Share,
+            contentDescription = "Compartir ${quote?.nombre ?: "la tasa"}",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                // 16 + 16 on each side keeps the touch target at 48dp, the
+                // minimum Material asks for, without a filled affordance around it.
+                .padding(16.dp)
+                .size(16.dp)
+        )
+    }
+}
+
+/**
  * Honesty strip for a snapshot the app could not refresh. Known-good numbers
  * with a clear "these are old" note beat an empty screen — the reader always
  * knows which of the two they are looking at.
@@ -626,6 +682,7 @@ private fun DolarContent(
             QuoteRow(
                 quote = quote,
                 selected = quote.fuente == uiState.selectedFuente,
+                highPrecision = highPrecision,
                 onClick = { onSelectCasa(quote.fuente) }
             )
         }
@@ -797,6 +854,13 @@ private fun FeaturedCard(
                     )
                 }
             }
+
+            Spacer(Modifier.height(14.dp))
+
+            // The share affordance sits directly under the number it shares:
+            // on the hero card the rate is the subject, so the control belongs
+            // with the number, not out in a corner competing with the chrome.
+            ShareRateAction(quote = quote, highPrecision = highPrecision)
         }
     }
 }
@@ -1149,26 +1213,26 @@ private fun CalendarLookupSection(
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
 
-    // Limite: midnight UTC de hoy
-    val todayUtcMillis = remember {
-        java.time.LocalDate.now().atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+    // Limite: midnight UTC de hoy. The rule for which days exist at all lives in
+    // CalendarioDateRules, so the picker and its unit test cannot drift apart.
+    val todayUtc = remember { java.time.LocalDate.now() }
+    val todayUtcMillis = remember(todayUtc) {
+        todayUtc.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
     }
 
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = todayUtcMillis,
         selectableDates = object : SelectableDates {
-            override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                // Only allow dates within the last 3 months
-                val threeMonthsAgo = java.time.LocalDate.now().minusMonths(3)
-                    .atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
-                return utcTimeMillis in threeMonthsAgo..todayUtcMillis
-            }
-            override fun isSelectableYear(year: Int): Boolean {
-                return year <= java.time.Year.now().value
-            }
+            // No weekends, and nothing older than the last 3 months. A weekend is
+            // not a day without a rate, it is not a day at all, so offering it
+            // could only ever answer "Sin datos para el …".
+            override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                CalendarioDateRules.isSelectableUtc(utcTimeMillis, todayUtc)
+
+            override fun isSelectableYear(year: Int): Boolean = year <= todayUtc.year
         }
     )
-    var calendarError by remember { mutableStateOf(false) }
+    var calendarRejection by remember { mutableStateOf(CalendarioRejection.NONE) }
     val priceFmt = remember { NumberFormat.getNumberInstance(Locale.getDefault()).apply {
         minimumFractionDigits = 2
         maximumFractionDigits = 2
@@ -1196,7 +1260,7 @@ private fun CalendarLookupSection(
             )
             Spacer(Modifier.height(12.dp))
 
-            Button(onClick = { calendarError = false; showDatePicker = true }) {
+            Button(onClick = { calendarRejection = CalendarioRejection.NONE; showDatePicker = true }) {
                 Icon(
                     imageVector = Icons.Rounded.CalendarMonth,
                     contentDescription = null,
@@ -1206,11 +1270,22 @@ private fun CalendarLookupSection(
                 Text("Elegir fecha")
             }
 
-            // Error: fecha futura
-            if (calendarError) {
+            // Aviso: la fecha elegida no existe en el rango que el calendario ofrece
+            val calendarErrorText = when (calendarRejection) {
+                CalendarioRejection.NONE -> null
+                CalendarioRejection.AFTER_TODAY ->
+                    "Solo se pueden consultar fechas anteriores o iguales a hoy"
+                CalendarioRejection.WEEKEND ->
+                    "El BCV no publica tasas los fines de semana"
+                // Light on purpose: the reader asked for a rate, not a rejection
+                // notice, and three months is a window, not a failure.
+                CalendarioRejection.TOO_OLD ->
+                    "Por ahora guardamos los últimos 3 meses, probá con una fecha más reciente"
+            }
+            calendarErrorText?.let { message ->
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "Solo se pueden consultar fechas anteriores o iguales a hoy",
+                    text = message,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.error
                 )
@@ -1311,12 +1386,15 @@ private fun CalendarLookupSection(
             confirmButton = {
                 Button(onClick = {
                     datePickerState.selectedDateMillis?.let { millis ->
-                        if (millis > todayUtcMillis) {
-                            calendarError = true
-                        } else {
-                            calendarError = false
-                            viewModel.lookupDateRate(millis)
-                            showDatePicker = false
+                        // Same rule the picker renders with, so the confirm button
+                        // cannot accept a day the calendar just refused.
+                        when (val rejection = CalendarioDateRules.rejectionUtc(millis, todayUtc)) {
+                            CalendarioRejection.NONE -> {
+                                calendarRejection = CalendarioRejection.NONE
+                                viewModel.lookupDateRate(millis)
+                                showDatePicker = false
+                            }
+                            else -> calendarRejection = rejection
                         }
                     }
                 }) {
@@ -1326,7 +1404,7 @@ private fun CalendarLookupSection(
             dismissButton = {
                 Button(onClick = {
                     showDatePicker = false
-                    calendarError = false
+                    calendarRejection = CalendarioRejection.NONE
                     viewModel.clearDateRate()
                 }) {
                     Text("Cancelar")
@@ -1433,6 +1511,7 @@ private fun SectionHeader(text: String) {
 private fun QuoteRow(
     quote: DolarQuote,
     selected: Boolean,
+    highPrecision: Boolean = false,
     onClick: () -> Unit
 ) {
     Card(
@@ -1478,6 +1557,10 @@ private fun QuoteRow(
                     TrendIndicator(variacion = variacion)
                 }
             }
+            Spacer(Modifier.width(10.dp))
+            // Nested inside the row's own click: the child consumes the tap, so
+            // sharing never reads as a source switch.
+            ShareRateAction(quote = quote, highPrecision = highPrecision)
         }
     }
 }

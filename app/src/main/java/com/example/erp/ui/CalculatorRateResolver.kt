@@ -35,6 +35,15 @@ object CalculatorRateResolver {
             return today.copy(
                 nombre = "${today.nombre} (futura)",
                 promedio = future.promedio,
+                // The future quote's OWN anterior and variacion are the coherent
+                // pair here: fetchBcv() maps both from the same payload as
+                // promedio, so they describe the same day-to-day move. Inheriting
+                // today's instead labelled the future rate with YESTERDAY's rate
+                // as its "anterior" — and because the ViewModel builds today's
+                // synthetic quote with variacion = null on purpose, it dropped the
+                // variation entirely, so the future rate showed no change at all.
+                anterior = future.anterior,
+                variacion = future.variacion,
                 fechaActualizacion = future.fechaActualizacion
             )
         }

@@ -3,7 +3,9 @@ package com.example.erp.ui
 import com.example.erp.data.DolarQuote
 import com.example.erp.data.RateSample
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -68,6 +70,68 @@ class CalculatorRateSourceTest {
         assertEquals(780.10, resolved!!.promedio, 0.0001)
         assertEquals("Dólar (BCV) (futura)", resolved.nombre)
         assertEquals("usd", resolved.fuente)
+    }
+
+    @Test
+    fun `NEXT_RATE carries the future quote's own anterior and variacion`() {
+        val resolved = CalculatorRateResolver.resolve(
+            today = today,
+            future = future,
+            futureSource = CalculatorRateSource.NEXT_RATE,
+            selectedSample = null,
+            selectedLabel = null,
+            dateSource = CalculatorRateSource.TODAY
+        )
+
+        assertNotNull(resolved)
+        // fetchBcv() maps anterior and variacion from the SAME payload as
+        // promedio, so the future quote's own pair describes the future rate.
+        assertEquals(773.31, resolved!!.anterior!!, 0.0001)
+        assertEquals(0.878, resolved.variacion!!, 0.0001)
+        // And explicitly NOT today's pair, which belongs to a different day.
+        assertNotEquals(772.54, resolved.anterior!!, 0.0001)
+        assertNotEquals(0.099, resolved.variacion!!, 0.0001)
+    }
+
+    @Test
+    fun `NEXT_RATE keeps the variation when today's synthetic quote has none`() {
+        // The ViewModel builds today's quote with variacion = null on purpose,
+        // so inheriting it silently dropped the variation altogether.
+        val syntheticToday = today.copy(variacion = null, anterior = 771.90)
+
+        val resolved = CalculatorRateResolver.resolve(
+            today = syntheticToday,
+            future = future,
+            futureSource = CalculatorRateSource.NEXT_RATE,
+            selectedSample = null,
+            selectedLabel = null,
+            dateSource = CalculatorRateSource.TODAY
+        )
+
+        assertNotNull(resolved)
+        assertEquals(0.878, resolved!!.variacion!!, 0.0001)
+        assertEquals(773.31, resolved.anterior!!, 0.0001)
+    }
+
+    @Test
+    fun `NEXT_RATE never borrows today's anterior and variacion, even when the future has none`() {
+        // The guard against the fix being half-reverted: a future quote with no
+        // pair of its own must stay empty instead of quietly re-inheriting
+        // today's, which is the bug this branch was corrected for.
+        val bareFuture = future.copy(anterior = null, variacion = null)
+
+        val resolved = CalculatorRateResolver.resolve(
+            today = today,
+            future = bareFuture,
+            futureSource = CalculatorRateSource.NEXT_RATE,
+            selectedSample = null,
+            selectedLabel = null,
+            dateSource = CalculatorRateSource.TODAY
+        )
+
+        assertNotNull(resolved)
+        assertNull(resolved!!.anterior)
+        assertNull(resolved.variacion)
     }
 
     @Test
