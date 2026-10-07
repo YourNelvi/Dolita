@@ -1340,16 +1340,28 @@ private fun CalendarLookupSection(
         todayUtc.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
     }
 
+    // El dia publicado: el unico dia futuro que el calendario ofrece, y el unico
+    // que lleva el punto verde. Viene de la cotizacion, no de un reloj: la tasa
+    // "de manana" del BCV es para el proximo dia que publica, que no siempre es
+    // manana (los fines de semana no publica).
+    val publishedDay = remember(uiState.futureQuote) { publishedDayOf(uiState.futureQuote) }
+
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = todayUtcMillis,
         selectableDates = object : SelectableDates {
             // No weekends, and nothing older than the last 3 months. A weekend is
             // not a day without a rate, it is not a day at all, so offering it
             // could only ever answer "Sin datos para el …".
+            //
+            // The one exception is the published day: its rate exists, so the
+            // "nothing after today" bound does not apply to it.
             override fun isSelectableDate(utcTimeMillis: Long): Boolean =
-                CalendarioDateRules.isSelectableUtc(utcTimeMillis, todayUtc)
+                CalendarioDateRules.isSelectableUtc(utcTimeMillis, todayUtc, publishedDay)
 
-            override fun isSelectableYear(year: Int): Boolean = year <= todayUtc.year
+            // Around New Year the published day falls in the next year, so the
+            // year gate cannot simply stop at the current one.
+            override fun isSelectableYear(year: Int): Boolean =
+                year <= todayUtc.year || year == publishedDay?.year
         }
     )
     var calendarRejection by remember { mutableStateOf(CalendarioRejection.NONE) }
@@ -1508,7 +1520,13 @@ private fun CalendarLookupSection(
                     datePickerState.selectedDateMillis?.let { millis ->
                         // Same rule the picker renders with, so the confirm button
                         // cannot accept a day the calendar just refused.
-                        when (val rejection = CalendarioDateRules.rejectionUtc(millis, todayUtc)) {
+                        when (
+                            val rejection = CalendarioDateRules.rejectionUtc(
+                                millis,
+                                todayUtc,
+                                publishedDay
+                            )
+                        ) {
                             CalendarioRejection.NONE -> {
                                 calendarRejection = CalendarioRejection.NONE
                                 viewModel.lookupDateRate(millis)
@@ -1531,7 +1549,22 @@ private fun CalendarLookupSection(
                 }
             }
         ) {
-            DatePicker(state = datePickerState)
+            // The marker cannot live inside a Material3 day cell (there is no
+            // dayContent slot), so it is drawn over the picker. matchParentSize
+            // keeps it exactly as wide and tall as the picker it sits on, which
+            // is what the overlay's grid arithmetic is measured against.
+            Box {
+                DatePicker(state = datePickerState)
+                CalendarioPublishedDayMarker(
+                    displayedMonthMillis = datePickerState.displayedMonthMillis,
+                    // To verify the overlay geometry against a day that is
+                    // guaranteed visible, substitute a fixed visible date here
+                    // (today works) — the real marked day only exists once BCV
+                    // publishes it, which cannot be forced.
+                    markedDate = publishedDay,
+                    modifier = Modifier.matchParentSize()
+                )
+            }
         }
     }
 }

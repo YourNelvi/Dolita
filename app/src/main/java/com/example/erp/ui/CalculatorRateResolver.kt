@@ -3,6 +3,8 @@ package com.example.erp.ui
 import com.example.erp.data.DolarQuote
 import com.example.erp.data.RateSample
 import java.text.NumberFormat
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Locale
 
 /**
@@ -14,6 +16,74 @@ import java.util.Locale
  * blank calculator.
  */
 enum class CalculatorRateSource { TODAY, NEXT_RATE, SELECTED_DATE }
+
+// ============================================================================
+// The published next-day day
+// ============================================================================
+
+/**
+ * The day a next-day quote publishes a rate for, read from the quote's OWN
+ * `fechaActualizacion`, or null when there is no quote or its day is
+ * unreadable.
+ *
+ * Not "tomorrow": BCV's next-day quote is for the next day it actually
+ * publishes, which is not literally today + 1 when that lands on a weekend.
+ * The quote is the only honest source for this date, which is why this is a
+ * function of the quote and not a clock read.
+ *
+ * A published day is what makes a future day selectable and what the calendar
+ * marks, so an unreadable value yields nothing rather than a guess: a guessed
+ * day would open a future date nobody published a rate for.
+ */
+fun publishedDayOf(quote: DolarQuote?): LocalDate? {
+    if (quote == null) return null
+    return try {
+        LocalDate.parse(quote.fechaActualizacion)
+    } catch (_: Exception) {
+        null
+    }
+}
+
+/**
+ * The published next-day rate as a [RateSample], so everything downstream —
+ * the result row, the selection bar and [CalculatorRateResolver]'s
+ * SELECTED_DATE branch — treats that day exactly like any other looked-up day
+ * and none of it had to learn about a second kind of sample.
+ *
+ * Exact match only, and this is the whole point of the function. The published
+ * quote is the ONLY rate that lives outside `historyStore`, so a lookup that
+ * searched history alone answered "Sin datos para el …" for exactly the day the
+ * calendar marks as published. The fix must not overshoot into borrowing that
+ * rate for a neighbouring day: a rate under a date BCV never published it for
+ * is a fabricated answer, which is worse than an honest no-data row.
+ *
+ * @param source the currency the screen is showing, so another tab's published
+ *   quote can never answer this tab's lookup.
+ * @return null when there is no quote for [source], when its day is unreadable,
+ *   or when its day is not [date].
+ */
+fun nextDaySampleOf(
+    quote: DolarQuote?,
+    source: String,
+    date: LocalDate,
+    zoneId: ZoneId = ZoneId.systemDefault()
+): RateSample? {
+    if (quote == null || quote.fuente != source) return null
+    val publishedDay = publishedDayOf(quote) ?: return null
+    if (publishedDay != date) return null
+    return RateSample(
+        fuente = quote.fuente,
+        nombre = quote.nombre,
+        precio = quote.promedio,
+        // Midnight in the caller's zone, which is the identity every historical
+        // sample carries, so this day is comparable with the stored ones.
+        timestampEpochMillis = publishedDay.atStartOfDay(zoneId).toInstant().toEpochMilli(),
+        // The published pair travels WITH the rate: a delta computed against a
+        // different day's rate is the bug the NEXT_RATE branch already fixed.
+        anterior = quote.anterior,
+        variacion = quote.variacion
+    )
+}
 
 /**
  * Resolves the quote the calculator converts with, as a pure function so the

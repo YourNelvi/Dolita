@@ -338,6 +338,18 @@ open class DolarViewModel @JvmOverloads constructor(
         }
     }
 
+/**
+     * Resolves the day the reader picked into the rate that day actually has.
+     *
+     * History is searched first because it is the source for every day up to and
+     * including today. The published next-day rate is consulted after it because
+     * that one rate deliberately lives OUTSIDE history — it has not happened yet,
+     * so nothing has sampled it — and a history-only lookup answered "Sin datos
+     * para el …" for exactly the day the calendar marks as published. Both
+     * branches match on the day's own identity, so neither carries a neighbouring
+     * day's rate forward, and a day with genuinely no rate still falls through to
+     * the honest null.
+     */
     fun lookupDateRate(dateMillis: Long) {
         viewModelScope.launch {
             // El DatePicker retorna midnight UTC; convertir directamente a LocalDate via UTC
@@ -347,12 +359,12 @@ open class DolarViewModel @JvmOverloads constructor(
             val zoneId = java.time.ZoneId.systemDefault()
             val sample = samples.firstOrNull {
                 it.fuente == selected &&
-                com.example.erp.data.localDateOf(it.timestampEpochMillis, zoneId) == date
-            }
+                    com.example.erp.data.localDateOf(it.timestampEpochMillis, zoneId) == date
+            } ?: nextDaySampleOf(_uiState.value.futureQuote, selected, date, zoneId)
             _uiState.update {
                 it.copy(
                     selectedDateRate = sample,
-                    selectedDateLabel = date.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+                    selectedDateLabel = CalendarioDateRules.lookupLabel(date),
                     dateLookupDone = true
                 )
             }
