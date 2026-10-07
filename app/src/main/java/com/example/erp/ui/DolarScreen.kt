@@ -166,7 +166,8 @@ fun DolarScreen(
         // button was silently asking the cache to render itself instead of
         // asking the network — and "Reintentar" inherited the same no-op.
         onRefresh = { viewModel.load(force = true) },
-        onToggleFutureRate = viewModel::toggleUseFutureRate,
+        onToggleFutureRate = viewModel::toggleFutureRate,
+        onToggleSelectedDateRate = viewModel::toggleSelectedDateRate,
         viewModel = viewModel
     )
 }
@@ -178,6 +179,7 @@ fun DolarScreenContent(
     onSelectCasa: (String) -> Unit,
     onRefresh: () -> Unit,
     onToggleFutureRate: () -> Unit,
+    onToggleSelectedDateRate: () -> Unit = {},
     viewModel: DolarViewModel
 ) {
     var showBottomSheet by remember { mutableStateOf(false) }
@@ -266,6 +268,7 @@ fun DolarScreenContent(
                     uiState = uiState,
                     onSelectCasa = onSelectCasa,
                     onToggleFutureRate = onToggleFutureRate,
+                    onToggleSelectedDateRate = onToggleSelectedDateRate,
                     viewModel = viewModel,
                     highPrecision = currentHighPrecision,
                     modifier = contentModifier
@@ -515,6 +518,7 @@ private fun DolarContent(
     uiState: DolarUiState,
     onSelectCasa: (String) -> Unit,
     onToggleFutureRate: () -> Unit,
+    onToggleSelectedDateRate: () -> Unit,
     viewModel: DolarViewModel,
     highPrecision: Boolean,
     modifier: Modifier = Modifier
@@ -568,18 +572,6 @@ private fun DolarContent(
             }
         }
 
-        // Proxima tasa (si el API ya publico la de manana)
-        uiState.futureQuote?.let { future ->
-            item {
-                ProximaTasaCard(
-                    future = future,
-                    highPrecision = highPrecision,
-                    isActive = uiState.useFutureRate,
-                    onClick = onToggleFutureRate
-                )
-            }
-        }
-
         item {
             CasaChips(
                 quotes = uiState.quotes,
@@ -588,23 +580,28 @@ private fun DolarContent(
             )
         }
 
+        // The two alternative rates live together right above the section they
+        // change: separated, they read as independent read-only cards, and the
+        // calculator's actual input is invisible.
+        item {
+            CalculatorRateBars(
+                uiState = uiState,
+                highPrecision = highPrecision,
+                onToggleFutureRate = onToggleFutureRate,
+                onToggleSelectedDateRate = onToggleSelectedDateRate
+            )
+        }
+
         item { SectionHeader("Calculadora") }
         item {
-            val future = uiState.futureQuote
-            val calcQuote = if (uiState.useFutureRate && future != null && selected != null) {
-                // Crear un DolarQuote sintético con la tasa futura para la calculadora
-                val sel = selected!!
-                DolarQuote(
-                    fuente = sel.fuente,
-                    nombre = sel.nombre + " (futuro)",
-                    promedio = future.promedio,
-                    anterior = sel.anterior,
-                    variacion = sel.variacion,
-                    fechaActualizacion = future.fechaActualizacion
-                )
-            } else {
-                selected
-            }
+            val calcQuote = CalculatorRateResolver.resolve(
+                today = selected,
+                future = uiState.futureQuote,
+                futureSource = uiState.calcRateSource,
+                selectedSample = uiState.selectedDateRate,
+                selectedLabel = uiState.selectedDateLabel,
+                dateSource = uiState.calcRateSource
+            )
             calcQuote?.let { quote ->
                 CalculatorCard(
                     quote = quote,
@@ -840,6 +837,44 @@ private fun FeaturedStatColored(label: String, value: String, color: Color) {
     }
 }
 
+/**
+ * The calculator's rate choice, shown as a stack of toggles right above the
+ * calculator. Only rates that actually exist are rendered: a next-day quote
+ * that the API never published and a calendar lookup that found nothing are
+ * not options, so offering them would promise a switch that cannot happen.
+ */
+@Composable
+private fun CalculatorRateBars(
+    uiState: DolarUiState,
+    highPrecision: Boolean = false,
+    onToggleFutureRate: () -> Unit = {},
+    onToggleSelectedDateRate: () -> Unit = {}
+) {
+    val future = uiState.futureQuote
+    val sample = uiState.selectedDateRate
+    if (future == null && sample == null) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (future != null) {
+            ProximaTasaCard(
+                future = future,
+                highPrecision = highPrecision,
+                isActive = uiState.calcRateSource == CalculatorRateSource.NEXT_RATE,
+                onClick = onToggleFutureRate
+            )
+        }
+        if (sample != null) {
+            TasaPorFechaCard(
+                sample = sample,
+                label = uiState.selectedDateLabel,
+                highPrecision = highPrecision,
+                isActive = uiState.calcRateSource == CalculatorRateSource.SELECTED_DATE,
+                onClick = onToggleSelectedDateRate
+            )
+        }
+    }
+}
+
 @Composable
 private fun ProximaTasaCard(
     future: DolarQuote,
@@ -892,6 +927,69 @@ private fun ProximaTasaCard(
             }
             Text(
                 text = "Bs ${fmt.format(future.promedio)}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = valueColor
+            )
+        }
+    }
+}
+
+/**
+ * Same visual language as the next-day bar, because it fills the same role: a
+ * selectable alternative rate for the calculator. The calendar section keeps
+ * showing the lookup result; this bar is the control that applies it.
+ */
+@Composable
+private fun TasaPorFechaCard(
+    sample: RateSample,
+    label: String?,
+    highPrecision: Boolean = false,
+    isActive: Boolean = false,
+    onClick: () -> Unit = {}
+) {
+    val fracDigits = if (highPrecision) 4 else 2
+    val fmt = NumberFormat.getNumberInstance(Locale.getDefault()).apply {
+        minimumFractionDigits = fracDigits
+        maximumFractionDigits = fracDigits
+    }
+    val borderColor = if (isActive) accentColor() else cardBorderColor()
+    val titleColor = if (isActive) accentColor() else MaterialTheme.colorScheme.onSurface
+    val valueColor = if (isActive) accentColor() else MaterialTheme.colorScheme.onSurface
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = cardContainerColor()),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = borderColor
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Text(
+                    text = if (isActive) "Usando tasa del ${label ?: "ese dia"}" else "Tasa de ${label ?: "esa fecha"}",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = titleColor
+                )
+                Text(
+                    text = sample.nombre,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = "Bs ${fmt.format(sample.precio)}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = valueColor

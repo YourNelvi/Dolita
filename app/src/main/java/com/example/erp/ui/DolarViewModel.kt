@@ -36,7 +36,8 @@ data class DolarUiState(
     val selectedDateLabel: String? = null,
     val dateLookupDone: Boolean = false,
     val futureQuote: DolarQuote? = null,
-    val useFutureRate: Boolean = false,
+    /** Which rate the calculator converts with; see [CalculatorRateSource]. */
+    val calcRateSource: CalculatorRateSource = CalculatorRateSource.TODAY,
     /** True when what is on screen came from cache because a refresh failed. */
     val isStale: Boolean = false,
     /** When the shown snapshot was captured, for the staleness notice. */
@@ -278,12 +279,63 @@ open class DolarViewModel @JvmOverloads constructor(
                     java.time.LocalDate.parse(quote.fechaActualizacion).isAfter(today)
                 } catch (e: Exception) { false }
             }
-            _uiState.update { it.copy(historial = historial, futureQuote = futureForSelected) }
+            _uiState.update {
+                it.copy(
+                    historial = historial,
+                    futureQuote = futureForSelected,
+                    // A looked-up date belongs to the currency it was searched
+                    // for. Keeping it across a source switch leaves the
+                    // calculator converting euros with a dollar rate while the
+                    // screen still shows the old lookup result.
+                    selectedDateRate = null,
+                    selectedDateLabel = null,
+                    dateLookupDone = false,
+                    // The new source may not publish a next-day rate at all.
+                    calcRateSource = when {
+                        it.calcRateSource == CalculatorRateSource.SELECTED_DATE ->
+                            CalculatorRateSource.TODAY
+                        it.calcRateSource == CalculatorRateSource.NEXT_RATE && futureForSelected == null ->
+                            CalculatorRateSource.TODAY
+                        else -> it.calcRateSource
+                    }
+                )
+            }
         }
     }
 
-    fun toggleUseFutureRate() {
-        _uiState.update { it.copy(useFutureRate = !it.useFutureRate) }
+    /**
+     * Option (a): the bars are toggles, not a radio pair. Tapping the active
+     * one releases it and the calculator goes back to today's rate.
+     */
+    fun toggleFutureRate() {
+        _uiState.update { state ->
+            // Nothing to select when the API has not published a next-day rate,
+            // so the tap is ignored instead of parking the calculator on TODAY.
+            if (state.futureQuote == null) return@update state
+            state.copy(
+                calcRateSource = if (state.calcRateSource == CalculatorRateSource.NEXT_RATE) {
+                    CalculatorRateSource.TODAY
+                } else {
+                    CalculatorRateSource.NEXT_RATE
+                }
+            )
+        }
+    }
+
+    /** Same toggle semantics as [toggleFutureRate], for the calendar-found rate. */
+    fun toggleSelectedDateRate() {
+        _uiState.update { state ->
+            // A lookup that found no sample has no rate to use; toggling it on
+            // would make the calculator show today's number under a date.
+            if (state.selectedDateRate == null) return@update state
+            state.copy(
+                calcRateSource = if (state.calcRateSource == CalculatorRateSource.SELECTED_DATE) {
+                    CalculatorRateSource.TODAY
+                } else {
+                    CalculatorRateSource.SELECTED_DATE
+                }
+            )
+        }
     }
 
     fun lookupDateRate(dateMillis: Long) {
@@ -308,7 +360,21 @@ open class DolarViewModel @JvmOverloads constructor(
     }
 
     fun clearDateRate() {
-        _uiState.update { it.copy(selectedDateRate = null, selectedDateLabel = null, dateLookupDone = false) }
+        _uiState.update {
+            it.copy(
+                selectedDateRate = null,
+                selectedDateLabel = null,
+                dateLookupDone = false,
+                // The rate the calculator was using is being deleted right now.
+                // Staying on SELECTED_DATE would keep converting at an invisible
+                // rate: nothing on screen would explain where the number came from.
+                calcRateSource = if (it.calcRateSource == CalculatorRateSource.SELECTED_DATE) {
+                    CalculatorRateSource.TODAY
+                } else {
+                    it.calcRateSource
+                }
+            )
+        }
     }
 
     fun setTheme(theme: com.example.erp.ui.theme.AppTheme) {
