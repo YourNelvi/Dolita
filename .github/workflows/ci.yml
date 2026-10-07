@@ -30,7 +30,7 @@ jobs:
       # The wrapper is what pins Gradle 9.5.0. Installing Gradle from the
       # internet instead would mean CI tests a version nobody ships.
       - name: Set up JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "25"
