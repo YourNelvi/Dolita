@@ -154,6 +154,16 @@ private fun trendColor(): Color = positiveColor()
 @Composable
 private fun downColor(): Color = if (isDarkTheme()) FintechSignalRed else DownRedLight
 
+/**
+ * The calculator's amount fields as the card holds them, in the digit encoding
+ * the fields use ("123456" is 1.234,56). One holder for both sides so the two
+ * published amounts can never be read from two different points in time.
+ */
+private data class CalculatorAmounts(
+    val bolivaresDigits: String = "",
+    val divisaDigits: String = ""
+)
+
 @Composable
 fun DolarScreen(
     viewModel: DolarViewModel = viewModel()
@@ -464,24 +474,20 @@ private fun HairlineAction(
 }
 
 /**
- * Share a rate as plain text, in the same voice as [HairlineAction]: flat, a
- * hairline border, no Material elevation and no tonal fill. A filled M3 pill
- * here would outshout the number it belongs to.
+ * The share affordance itself: a flat square with a hairline border and no
+ * tonal fill, in the same voice as [HairlineAction]. A filled M3 pill next to
+ * these numbers would outshout them.
  *
- * Text and not a picture: the reader pastes this into a chat, where a rendered
- * image of a number is a worse number than the number itself.
- *
- * The tap does nothing when there is no quote to describe. An empty share sheet
- * is a dead control, not a harmless one, so the guard returns before anything is
- * launched.
+ * The tap does nothing when there is nothing to send. An empty share sheet is a
+ * dead control, not a harmless one, so callers build the payload first and
+ * return before launching anything.
  */
 @Composable
-private fun ShareRateAction(
-    quote: DolarQuote?,
-    highPrecision: Boolean = false,
+private fun ShareIconButton(
+    onShare: () -> Unit,
+    contentDescription: String,
     modifier: Modifier = Modifier
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
     val shape = RoundedCornerShape(10.dp)
     Surface(
         shape = shape,
@@ -491,23 +497,11 @@ private fun ShareRateAction(
             // Clip before the click so the touch area is the rounded square the
             // eye sees, not the untrimmed bounds behind it.
             .clip(shape)
-            .clickable {
-                val text = RateShareText.build(
-                    quote = quote,
-                    highPrecision = highPrecision
-                ) ?: return@clickable
-                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(android.content.Intent.EXTRA_TEXT, text)
-                }
-                context.startActivity(
-                    android.content.Intent.createChooser(send, "Compartir tasa")
-                )
-            }
+            .clickable(onClick = onShare)
     ) {
         Icon(
             imageVector = Icons.Rounded.Share,
-            contentDescription = "Compartir ${quote?.nombre ?: "la tasa"}",
+            contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
                 // 16 + 16 on each side keeps the touch target at 48dp, the
@@ -516,6 +510,75 @@ private fun ShareRateAction(
                 .size(16.dp)
         )
     }
+}
+
+/**
+ * Hands plain text to the system chooser. One place decides HOW this app shares,
+ * so every payload leaves the device as `ACTION_SEND` text — never a file, never
+ * an image, never a rendered screenshot of a number.
+ */
+private fun sharePlainText(context: android.content.Context, text: String, chooserTitle: String) {
+    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(android.content.Intent.EXTRA_TEXT, text)
+    }
+    context.startActivity(android.content.Intent.createChooser(send, chooserTitle))
+}
+
+/**
+ * Share a rate as plain text. Text and not a picture: the reader pastes this
+ * into a chat, where a rendered image of a number is a worse number than the
+ * number itself.
+ */
+@Composable
+private fun ShareRateAction(
+    quote: DolarQuote?,
+    highPrecision: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    ShareIconButton(
+        onShare = {
+            val text = RateShareText.build(
+                quote = quote,
+                highPrecision = highPrecision
+            ) ?: return@ShareIconButton
+            sharePlainText(context, text, "Compartir tasa")
+        },
+        contentDescription = "Compartir ${quote?.nombre ?: "la tasa"}",
+        modifier = modifier
+    )
+}
+
+/**
+ * Share what the calculator produced, not just the rate it converted with.
+ *
+ * Both amounts travel, because a rate on its own is already shareable from the
+ * hero and this control exists for the RESULT the user typed. The day comes
+ * from the rate that did the conversion, so a next-day or calendar-selected rate
+ * says which day it belongs to instead of letting the message read as today's.
+ */
+@Composable
+private fun ShareCalculatorResultAction(
+    quote: DolarQuote?,
+    amounts: CalculatorAmounts,
+    highPrecision: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    ShareIconButton(
+        onShare = {
+            val text = CalculatorShareText.build(
+                quote = quote,
+                bolivaresDigits = amounts.bolivaresDigits,
+                divisaDigits = amounts.divisaDigits,
+                highPrecision = highPrecision
+            ) ?: return@ShareIconButton
+            sharePlainText(context, text, "Compartir cálculo")
+        },
+        contentDescription = "Compartir el cálculo",
+        modifier = modifier
+    )
 }
 
 /**
@@ -581,6 +644,12 @@ private fun DolarContent(
 ) {
     val selected = uiState.quotes.firstOrNull { it.fuente == uiState.selectedFuente }
         ?: uiState.quotes.firstOrNull()
+
+    // The calculator's two amount fields, lifted out of the card so the share
+    // control can report exactly what is on screen. Empty until the card
+    // publishes them, which also makes an early share a no-op rather than a
+    // message about nothing.
+    var calculatorAmounts by remember { mutableStateOf(CalculatorAmounts()) }
 
     // The launch sequence lives here, on the container: one reveal for the whole
     // board, 60ms behind the top bar. Animating individual items would replay
@@ -659,10 +728,29 @@ private fun DolarContent(
                 dateSource = uiState.calcRateSource
             )
             calcQuote?.let { quote ->
-                CalculatorCard(
-                    quote = quote,
-                    quotes = uiState.quotes
-                )
+                Column {
+                    CalculatorCard(
+                        quote = quote,
+                        quotes = uiState.quotes,
+                        onAmountsChanged = { bolivares, divisa ->
+                            calculatorAmounts = CalculatorAmounts(bolivares, divisa)
+                        }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    // Inside the calculator section, not in the top bar: it
+                    // shares this card's answer, and it sits with the numbers it
+                    // is about.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        ShareCalculatorResultAction(
+                            quote = quote,
+                            amounts = calculatorAmounts,
+                            highPrecision = highPrecision
+                        )
+                    }
+                }
             }
         }
 
@@ -957,6 +1045,27 @@ private fun ProximaTasaCard(
     val titleColor = if (isActive) accentColor() else MaterialTheme.colorScheme.onSurface
     val valueColor = if (isActive) accentColor() else MaterialTheme.colorScheme.onSurface
 
+    // What tomorrow's rate costs against the rate it replaces. The arithmetic
+    // and the missing-value rules live in rateChangeOf(); this composable only
+    // decides how the answer reads.
+    val change = rateChangeOf(future)
+    // Neutral for zero AND for absent, the same way EvolutionChart reads a
+    // missing or flat variation: an unknown move must not wear a green.
+    val changeColor = when (change?.direction) {
+        RateChangeDirection.UP -> trendColor()
+        RateChangeDirection.DOWN -> downColor()
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    // Each half is printed only if the quote published it, so a rate that
+    // arrives without a previous value shows no delta at all rather than a
+    // confident "+0,00 Bs" the API never claimed.
+    val changeText = change?.let { rateChange ->
+        buildList {
+            rateChange.bolivaresDelta?.let { add(formatBolivaresDelta(it)) }
+            rateChange.percent?.let { add(formatRatePercent(it)) }
+        }.takeIf { it.isNotEmpty() }?.joinToString("  ·  ")
+    }
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = cardContainerColor()),
@@ -988,6 +1097,17 @@ private fun ProximaTasaCard(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                // Same voice as the line above: no pill, no fill, just the
+                // number in its signal colour.
+                changeText?.let { text ->
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = changeColor
+                    )
+                }
             }
             Text(
                 text = "Bs ${fmt.format(future.promedio)}",

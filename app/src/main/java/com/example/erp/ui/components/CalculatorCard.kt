@@ -97,10 +97,18 @@ private fun currencySymbol(unit: String): String = when (unit) {
     else -> "$"
 }
 
+/**
+ * @param onAmountsChanged reports the two amount fields as the user has them,
+ *   in the digit encoding the fields hold ("123456" is 1.234,56). The share
+ *   control lives outside this card, so the amounts it must send are lifted out
+ *   here instead of being read out of private state at the click site: one
+ *   source of truth, and no second copy that can drift from what is on screen.
+ */
 @Composable
 fun CalculatorCard(
     quote: DolarQuote?,
-    quotes: List<DolarQuote> = emptyList()
+    quotes: List<DolarQuote> = emptyList(),
+    onAmountsChanged: (bolivaresDigits: String, divisaDigits: String) -> Unit = { _, _ -> }
 ) {
     if (quote == null) return
     val rate = quote.promedio
@@ -180,6 +188,14 @@ fun CalculatorCard(
             divDigits = "100"
             vesDigits = CurrencyConverter.toDigits(CurrencyConverter.format(BigDecimal.valueOf(rate)))
         }
+    }
+
+    // Publish the amounts once they settle — after the prefill above and after
+    // every keystroke — so the share control reads exactly what the fields show.
+    // Keyed on the digits only: a recomposition with unchanged amounts has
+    // nothing new to report.
+    LaunchedEffect(vesDigits, divDigits) {
+        onAmountsChanged(vesDigits, divDigits)
     }
 
     // Fintech card: flat surface + hairline border, no M3 elevation.

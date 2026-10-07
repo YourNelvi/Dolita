@@ -65,8 +65,12 @@ object RateShareText {
      * needs, so both land on dd/MM/yyyy. An unrecognised value is passed through
      * untouched rather than dropped — a raw string is still better than a wrong
      * day.
+     *
+     * Shared with [CalculatorShareText] so both payloads name a rate's day the
+     * same way; a second copy of this parsing is how two share messages end up
+     * disagreeing about which day a rate belongs to.
      */
-    private fun quoteDay(fechaActualizacion: String): String = try {
+    internal fun quoteDay(fechaActualizacion: String): String = try {
         LocalDate.parse(fechaActualizacion).format(dayFormat)
     } catch (_: Exception) {
         try {
