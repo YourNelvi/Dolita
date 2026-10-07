@@ -304,6 +304,13 @@ class FileHistoryStore(
     }
 
     private fun writeAtomically(target: File, content: String) {
+        // The parent has to exist before the temp file can be created. This is
+        // the one line that kept the app from crashing on launch the first time
+        // the canonical subdirectory was introduced: filesDir always exists,
+        // filesDir/rate_history did not, and the failure only showed up on a
+        // device that had never run this build. mkdirs() returns false when the
+        // directory is already there, so this is safe to call on every write.
+        target.parentFile?.mkdirs()
         val tmp = File(target.parentFile, "${target.name}.tmp")
         tmp.writeText(content)
         try {
