@@ -105,7 +105,7 @@ class RateWidgetProvider : AppWidgetProvider() {
                     // another request.
                     val history = runCatching {
                         FileHistoryStore(
-                            dir = context.applicationContext.filesDir.resolve("rate_history"),
+                            dir = com.example.erp.data.FileHistoryStore.defaultDir(context),
                             zoneId = java.time.ZoneId.systemDefault()
                         )
                     }.getOrNull()?.let { store ->

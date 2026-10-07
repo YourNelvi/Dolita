@@ -39,6 +39,21 @@ class FetchQuotesWorker(
             val usdQuote = quotes.firstOrNull { it.fuente == "usd" }
             val eurQuote = quotes.firstOrNull { it.fuente == "eur" }
 
+            // Off-schedule runs still refresh the cache -- a phone that was off
+            // at 08:00 and booted at 14:00 should not show yesterday's number
+            // until 19:00 -- but they stay silent. The BCV publishes once a day
+            // and the announcement gates already suppress anything unchanged, so
+            // the cost of an extra fetch is one request, while skipping it
+            // entirely would leave the user looking at stale data.
+            //
+            // RateSchedulePolicy.shouldFetchBcv marked the two hours a fetch is
+            // expected; the worker never consulted it. A green test on a
+            // function nothing calls reads as coverage that is not there.
+            val onSchedule = RateSchedulePolicy.shouldFetchBcv(
+                System.currentTimeMillis(),
+                java.time.ZoneId.systemDefault()
+            )
+
             quotes.forEach { QuotesCache.upsert(applicationContext, it) }
             RateWidgetProvider.updateAllWidgets(applicationContext)
 
@@ -51,10 +66,14 @@ class FetchQuotesWorker(
                 PriceAlertEvaluator.evaluate(applicationContext, PriceAlert.Fuente.EUR, it.promedio)
             }
 
-            // Morning only: the rate of the day. The evening pass exists purely
-            // to catch tomorrow's number, so re-announcing today's here would
-            // be the duplicate this whole class exists to avoid.
-            if (!isEveningCheck) {
+            // Morning only, and on schedule. The evening pass exists purely to
+            // catch tomorrow's number, so re-announcing today's there would be
+            // the duplicate this whole class exists to avoid. The hour check is
+            // what covers a job WorkManager fired late: the input data still
+            // says "morning" even when the phone finally booted at 15:00, and
+            // the user should not get a "new rate" banner for a rate that was
+            // already announced eight hours ago.
+            if (!isEveningCheck && onSchedule) {
                 usdQuote?.let { usd ->
                     if (NotificationState.shouldNotifyDailyRate(
                             applicationContext,

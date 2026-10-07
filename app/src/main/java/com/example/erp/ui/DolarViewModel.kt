@@ -51,7 +51,7 @@ data class DolarUiState(
 open class DolarViewModel @JvmOverloads constructor(
     application: Application,
     private val repository: DolarRepository = CachedDolarRepository(ApiDolarRepository(), application),
-    private val historyStore: RateHistoryStore = FileHistoryStore(application.filesDir),
+    private val historyStore: RateHistoryStore = FileHistoryStore(FileHistoryStore.defaultDir(application)),
     private val themeRepository: ThemeRepository = ThemeRepositoryImpl(ThemePreferencesImpl(application))
 ) : AndroidViewModel(application) {
 

@@ -1487,7 +1487,7 @@ private class FakePreviewViewModel(
 ) : DolarViewModel(
     application = context.applicationContext as android.app.Application,
     repository = com.example.erp.data.ApiDolarRepository(),
-    historyStore = com.example.erp.data.FileHistoryStore(context.filesDir),
+    historyStore = com.example.erp.data.FileHistoryStore(com.example.erp.data.FileHistoryStore.defaultDir(context)),
     themeRepository = com.example.erp.data.ThemeRepositoryImpl(com.example.erp.data.ThemePreferencesImpl(context))
 )
 

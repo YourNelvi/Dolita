@@ -34,7 +34,7 @@ class DolarViewModelFactory(
             return DolarViewModel(
                 application = application,
                 repository = repository ?: CachedDolarRepository(ApiDolarRepository(), application),
-                historyStore = historyStore ?: FileHistoryStore(application.filesDir),
+                historyStore = historyStore ?: FileHistoryStore(FileHistoryStore.defaultDir(application)),
                 themeRepository = themeRepository ?: ThemeRepositoryImpl(ThemePreferencesImpl(application))
             ) as T
         }

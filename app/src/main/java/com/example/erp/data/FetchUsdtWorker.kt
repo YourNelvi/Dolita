@@ -25,7 +25,7 @@ class FetchUsdtWorker(
 
     private val apiRepository = ApiDolarRepository()
     private val historyStore: RateHistoryStore = FileHistoryStore(
-        dir = context.filesDir.resolve("rate_history"),
+        dir = FileHistoryStore.defaultDir(context),
         zoneId = java.time.ZoneId.systemDefault()
     )
 

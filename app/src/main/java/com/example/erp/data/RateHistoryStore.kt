@@ -42,6 +42,25 @@ class FileHistoryStore(
     private val zoneId: ZoneId = ZoneId.systemDefault()
 ) : RateHistoryStore {
 
+    companion object {
+        /**
+         * One location for every reader and writer.
+         *
+         * The app, the widget and the USDT worker each used their own path, so
+         * `filesDir/rates-2026.json` and `filesDir/rate_history/rates-2026.json`
+         * were different files. The widget sparkline read the second one, which
+         * only the USDT worker ever wrote, then filtered USDT out looking for
+         * USD -- so it rendered nothing, on every phone, always.
+         *
+         * Existing installs have their series in the old flat path. Moving here
+         * makes that look empty, which is what makes [needsHistoricalBackfill]
+         * fetch it again: a user who upgrades lands on a refilled history rather
+         * than a permanently blank chart.
+         */
+        fun defaultDir(context: android.content.Context): File =
+            context.applicationContext.filesDir.resolve("rate_history")
+    }
+
     private val mutex = Mutex()
 
     override suspend fun append(samples: List<RateSample>): List<RateSample> {
@@ -134,13 +153,24 @@ class FileHistoryStore(
             return
         }
 
-        val historicalData = try {
-            withContext(Dispatchers.IO) {
-                fetchHistoricalFromApi() + fetchHistoricalEuroFromApi()
+        // Each source fetches on its own. One try around both meant a USD outage
+        // skipped the EUR call entirely, and the EUR fetcher's own emptyList()
+        // fallback -- already written, already correct -- could never run. The
+        // tolerance existed and the call order made it unreachable.
+        val historicalData = withContext(Dispatchers.IO) {
+            val usd = try {
+                fetchHistoricalFromApi()
+            } catch (e: Exception) {
+                android.util.Log.w("RateHistoryStore", "USD historical failed: ${e.message}")
+                emptyList()
             }
-        } catch (e: Exception) {
-            android.util.Log.w("RateHistoryStore", "Historical fetch failed: ${e.message}")
-            return
+            val eur = try {
+                fetchHistoricalEuroFromApi()
+            } catch (e: Exception) {
+                android.util.Log.w("RateHistoryStore", "EUR historical failed: ${e.message}")
+                emptyList()
+            }
+            usd + eur
         }
         if (historicalData.isEmpty()) return
 
