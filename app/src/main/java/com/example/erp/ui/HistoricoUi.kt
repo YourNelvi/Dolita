@@ -103,7 +103,7 @@ fun historicoRows(
         HistoricoRow(
             fecha = dayFormat.format(Instant.ofEpochMilli(sample.timestampEpochMillis)),
             fuente = sample.nombre,
-            precio = "$${priceFormat.format(sample.precio)}",
+            precio = "Bs ${priceFormat.format(sample.precio)}",
             variacion = formatVariacion(sample.variacion, locale)
         )
     }

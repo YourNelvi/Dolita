@@ -86,7 +86,50 @@ private fun negativeColor(): Color =
  * a phone width without overlapping, so the axis names a readable subset and the
  * tap on a point still reports the exact date.
  */
+/**
+ * Drops the axis labels that would sit on top of another one.
+ *
+ * A fixed label budget cannot work: "dd/MM" fits five times across a phone and
+ * "dd/MM HH:mm" fits barely three, and picking evenly spaced indices is not
+ * enough on its own — with eight hourly samples and five labels the indices come
+ * out 0, 2, 4, 5, 7, and 4 and 5 are adjacent, so two full timestamps landed on
+ * top of each other and read as one garbled string.
+ *
+ * Measuring the rendered text is what makes this hold for any format and any
+ * screen. The final label always survives: it is the one that anchors the right
+ * edge, so a middle label yields to it rather than the other way round.
+ */
+internal fun selectAxisLabels(
+    candidates: List<Int>,
+    lastIndex: Int,
+    labelLeft: (Int) -> Float,
+    labelWidth: (Int) -> Float,
+    minGap: Float
+): List<Int> {
+    if (candidates.isEmpty()) return emptyList()
+    val kept = mutableListOf<Int>()
+    val finalLeft = if (lastIndex in candidates) labelLeft(lastIndex) else Float.POSITIVE_INFINITY
+    var previousRight = Float.NEGATIVE_INFINITY
+
+    candidates.forEach { index ->
+        val isLast = index == lastIndex
+        val left = labelLeft(index)
+        val right = left + labelWidth(index)
+        val overlapsPrevious = left < previousRight + minGap
+        val crowdsTheFinal = !isLast && right + minGap > finalLeft
+        if (isLast || (!overlapsPrevious && !crowdsTheFinal)) {
+            kept += index
+            previousRight = right
+        }
+    }
+    return kept
+}
+
+/** Upper bound on named dates before the collision pass thins them further. */
 internal const val X_AXIS_MAX_LABELS = 5
+
+/** Breathing room between two axis dates, in canvas pixels. */
+private const val LABEL_MIN_GAP_PX = 10f
 
 /**
  * Which sample indices the X axis should label: the first and last always, the
@@ -430,14 +473,37 @@ fun EvolutionChart(
 
             // Etiquetas de eje X: los puntos que caben, con los dos extremos
             // siempre nombrados y anclados hacia adentro para no recortarse.
-            axisLabelIndices.forEach { index ->
+            //
+            // Evenly spaced indices are only a first pass. They can land on
+            // neighbouring points — indices 4 and 5 of eight — which for the
+            // hourly format means two full timestamps drawn over each other, so
+            // the ones that would collide are dropped after measuring the text.
+            val labelTexts = axisLabelIndices.associateWith { index ->
+                dayFormat.format(Instant.ofEpochMilli(sorted[index].timestampEpochMillis))
+            }
+            fun widthOf(index: Int) = labelPaint.measureText(labelTexts.getValue(index))
+            val drawnLabels = selectAxisLabels(
+                candidates = axisLabelIndices,
+                lastIndex = sorted.size - 1,
+                labelLeft = { index ->
+                    when (index) {
+                        0 -> points[index].x
+                        sorted.size - 1 -> points[index].x - widthOf(index)
+                        else -> points[index].x - widthOf(index) / 2f
+                    }
+                },
+                labelWidth = ::widthOf,
+                minGap = LABEL_MIN_GAP_PX
+            )
+
+            drawnLabels.forEach { index ->
                 val paint = when (index) {
                     0 -> firstLabelPaint
                     sorted.size - 1 -> lastLabelPaint
                     else -> labelPaint
                 }
                 drawContext.canvas.nativeCanvas.drawText(
-                    dayFormat.format(Instant.ofEpochMilli(sorted[index].timestampEpochMillis)),
+                    labelTexts.getValue(index),
                     points[index].x,
                     canvasHeight - 2f,
                     paint
@@ -449,7 +515,7 @@ fun EvolutionChart(
         if (selectedIndex in sorted.indices) {
             val sample = sorted[selectedIndex]
             val dateStr = fullDateFormat.format(Instant.ofEpochMilli(sample.timestampEpochMillis))
-            val priceStr = "$${priceFormat.format(sample.precio)}"
+            val priceStr = "Bs ${priceFormat.format(sample.precio)}"
             val varStr = sample.variacion?.let { v ->
                 val sign = if (v >= 0) "+" else ""
                 "${sign}${priceFormat.format(v)}%"

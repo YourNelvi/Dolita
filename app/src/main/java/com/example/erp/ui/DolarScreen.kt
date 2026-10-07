@@ -127,7 +127,7 @@ private val priceFormatter = NumberFormat.getNumberInstance(Locale.getDefault())
     maximumFractionDigits = 2
 }
 
-private fun formatPrice(value: Double): String = "$${priceFormatter.format(value)}"
+private fun formatPrice(value: Double): String = "Bs ${priceFormatter.format(value)}"
 
 private val updatedFormatter = DateTimeFormatter.ofPattern("dd/MM HH:mm")
 private val dateFormatter = DateTimeFormatter.ofPattern("dd/MM")
@@ -662,7 +662,7 @@ private fun FeaturedCard(
         minimumFractionDigits = fracDigits
         maximumFractionDigits = fracDigits
     }
-    fun featFormatPrice(value: Double): String = "$${featPriceFormatter.format(value)}"
+    fun featFormatPrice(value: Double): String = "Bs ${featPriceFormatter.format(value)}"
 
     // The gap between the parallel market and the official rate is a MAGNITUDE,
     // not a direction: a wider gap is not a "gain" and must not wear the green
@@ -891,7 +891,7 @@ private fun ProximaTasaCard(
                 )
             }
             Text(
-                text = "$${fmt.format(future.promedio)}",
+                text = "Bs ${fmt.format(future.promedio)}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = valueColor
@@ -1159,7 +1159,7 @@ private fun CalendarLookupSection(
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 TickerNumber(
-                                    value = "$${priceFmt.format(sample.precio)}",
+                                    value = "Bs ${priceFmt.format(sample.precio)}",
                                     style = MaterialTheme.typography.titleLarge,
                                     color = accentColor(),
                                     textAlign = TextAlign.End

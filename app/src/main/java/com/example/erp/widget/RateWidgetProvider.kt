@@ -91,11 +91,11 @@ class RateWidgetProvider : AppWidgetProvider() {
                     val usdt = quotes.firstOrNull { it.fuente == "usdt" }
 
                     views.setTextViewText(R.id.widget_usd,
-                        usd?.let { "$${fmt.format(it.promedio)}" } ?: "--")
+                        usd?.let { "Bs ${fmt.format(it.promedio)}" } ?: "--")
                     views.setTextViewText(R.id.widget_eur,
-                        eur?.let { "€${fmt.format(it.promedio)}" } ?: "--")
+                        eur?.let { "Bs ${fmt.format(it.promedio)}" } ?: "--")
                     views.setTextViewText(R.id.widget_usdt,
-                        usdt?.let { "$${fmt.format(it.promedio)}" } ?: "--")
+                        usdt?.let { "Bs ${fmt.format(it.promedio)}" } ?: "--")
 
                     val now = java.time.LocalTime.now()
                         .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))

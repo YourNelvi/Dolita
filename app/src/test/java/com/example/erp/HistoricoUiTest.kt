@@ -48,8 +48,8 @@ class HistoricoUiTest {
         val state = historicoState(samples, caracas, usLocale)
         val rows = (state as HistoricoState.ConDatos).rows
         assertEquals(2, rows.size)
-        assertEquals(HistoricoRow("18/08", "Dólar (BCV)", "$772.54", "+0.10%"), rows[0])
-        assertEquals(HistoricoRow("18/08", "Dólar (BCV)", "$773.31", "+0.10%"), rows[1])
+        assertEquals(HistoricoRow("18/08", "Dólar (BCV)", "Bs 772.54", "+0.10%"), rows[0])
+        assertEquals(HistoricoRow("18/08", "Dólar (BCV)", "Bs 773.31", "+0.10%"), rows[1])
     }
 
     @Test
