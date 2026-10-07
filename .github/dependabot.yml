@@ -1,0 +1,45 @@
+# The app pulls rates from public endpoints and holds no user account, so the
+# attack surface is the dependency tree, not the code. AndroidX and Compose move
+# fast and carry published CVEs; this is the file that makes GitHub say so.
+version: 2
+
+updates:
+  # AGP, Kotlin, the version catalog, all libraries.
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Caracas"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "build"
+    groups:
+      # AndroidX and Compose together: they pin each other, and a Dependabot PR
+      # that bumps one alone fails to resolve more often than it helps.
+      android-runtime:
+        patterns:
+          - "androidx.*"
+          - "com.android.*"
+          - "org.jetbrains.kotlin*"
+      # Test-only dependencies. Safe to batch, never shipped to the device.
+      test-only:
+        dependency-type: "development"
+
+  # Gradle wrapper and actions are not app code but they do run on CI.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Caracas"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"
