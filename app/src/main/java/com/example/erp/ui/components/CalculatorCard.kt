@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.erp.data.CurrencyConverter
 import com.example.erp.data.DolarQuote
+import com.example.erp.ui.differentialGapLabel
 import com.example.erp.ui.theme.accentColor
 import com.example.erp.ui.theme.cardBorder
 import com.example.erp.ui.theme.cardBorderColor
@@ -401,9 +402,18 @@ fun CalculatorCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "${if (gapUp) "+" else ""}${"%.2f".format(gapPercent)}%" +
-                            "  ·  Bs ${CurrencyConverter.format(BigDecimal.valueOf(gapPerUnit))}" +
-                            if (gapUp) " más" else " menos",
+                        // The unit comes from the open tab, never from the side the
+                        // rate sits on: on the parallel tab the official side of
+                        // the gap is the official DOLLAR rate, so that tab is also
+                        // "por dólar" — and the percentage above it is the same on
+                        // every tab by construction, which is why the Bs figure has
+                        // to name its unit to not read as a wrong calculation.
+                        text = differentialGapLabel(
+                            percent = gapPercent,
+                            perUnitBs = gapPerUnit,
+                            parallelAbove = gapUp,
+                            fuente = quote.fuente
+                        ),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Medium,
                         color = accentColor()

@@ -17,6 +17,15 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
+ * The one canonical history directory, relative to `filesDir`.
+ *
+ * Named here instead of inline so [FileHistoryStore.defaultDir] and
+ * [deleteLegacyHistoryFiles] cannot disagree about it: the cleanup has to
+ * recognise this directory by name to stay away from it.
+ */
+const val RATE_HISTORY_DIR_NAME = "rate_history"
+
+/**
  * Persists [RateSample]s into per-year JSON files (`rates-YYYY.json`).
  * Appends are serialized and written atomically (tmp file + rename).
  */
@@ -58,7 +67,7 @@ class FileHistoryStore(
          * than a permanently blank chart.
          */
         fun defaultDir(context: android.content.Context): File =
-            context.applicationContext.filesDir.resolve("rate_history")
+            context.applicationContext.filesDir.resolve(RATE_HISTORY_DIR_NAME)
     }
 
     private val mutex = Mutex()
@@ -303,7 +312,13 @@ class FileHistoryStore(
         }
     }
 
-    private fun writeAtomically(target: File, content: String) {
+    /**
+     * internal, not private: the temp-file lifecycle is the only part of this
+     * store with observable side effects, and it is invisible from the outside.
+     * A write that fails after the temp file exists has to leave the directory
+     * exactly as it found it, and that is only testable from here.
+     */
+    internal fun writeAtomically(target: File, content: String) {
         // The parent has to exist before the temp file can be created. This is
         // the one line that kept the app from crashing on launch the first time
         // the canonical subdirectory was introduced: filesDir always exists,
@@ -312,16 +327,26 @@ class FileHistoryStore(
         // directory is already there, so this is safe to call on every write.
         target.parentFile?.mkdirs()
         val tmp = File(target.parentFile, "${target.name}.tmp")
-        tmp.writeText(content)
         try {
-            Files.move(
-                tmp.toPath(),
-                target.toPath(),
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING
-            )
-        } catch (e: AtomicMoveNotSupportedException) {
-            Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            tmp.writeText(content)
+            try {
+                Files.move(
+                    tmp.toPath(),
+                    target.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING
+                )
+            } catch (e: AtomicMoveNotSupportedException) {
+                Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            // Nothing reads a leftover temp file, so leaving one behind looked
+            // harmless until it did not: a move that fails for any reason other
+            // than "atomic moves unsupported" stranded it, one orphan per failed
+            // write, in the same directory the reader scans. After a successful
+            // move the temp path no longer exists and delete() just returns
+            // false, so this is safe on both paths.
+            tmp.delete()
         }
     }
 }
