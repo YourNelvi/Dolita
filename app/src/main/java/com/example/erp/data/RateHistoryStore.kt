@@ -122,19 +122,13 @@ class FileHistoryStore(
     /** Drops BCV samples dated Saturday or Sunday, keeping every other source. */
     private fun purgeBcvWeekendSamples(file: File) {
         val stored = readSamples(file)
-        val kept = stored.filterNot { sample ->
-            val weekend = localDateOf(sample.timestampEpochMillis, zoneId).dayOfWeek.let {
-                it == DayOfWeek.SATURDAY || it == DayOfWeek.SUNDAY
-            }
-            weekend && (sample.fuente == "usd" || sample.fuente == "eur")
-        }
-        if (kept.size != stored.size) {
-            android.util.Log.d(
-                "RateHistoryStore",
-                "Dropped ${stored.size - kept.size} BCV weekend samples with no published rate"
-            )
-            writeAtomically(file, RateHistoryCodec.encode(kept))
-        }
+        val dropped = bcvWeekendSamples(stored, zoneId)
+        if (dropped.isEmpty()) return
+        android.util.Log.d(
+            "RateHistoryStore",
+            "Dropped ${dropped.size} BCV weekend samples with no published rate"
+        )
+        writeAtomically(file, RateHistoryCodec.encode(stored.filterNot { it in dropped }))
     }
 
     override suspend fun hasData(): Boolean = mutex.withLock {
@@ -406,6 +400,31 @@ fun needsHistoricalBackfill(
 
 fun localDateOf(epochMillis: Long, zoneId: ZoneId = ZoneId.systemDefault()): LocalDate =
     Instant.ofEpochMilli(epochMillis).atZone(zoneId).toLocalDate()
+
+/**
+ * The stored samples that record no published rate: BCV entries dated Saturday or
+ * Sunday.
+ *
+ * Top-level and pure because this is a whole decision with real consequences and
+ * no way to observe it from a test. Zero of 904 records at the source fall on a
+ * weekend, so a Saturday or Sunday BCV point is an artefact of the app re-serving
+ * Friday's rate — but only for BCV. USDT is a parallel market that moves seven days
+ * a week, and treating its weekend points as noise would delete real history.
+ *
+ * Extracted out of [FileHistoryStore]'s repair path for the same reason
+ * `parseBcvPayload` was lifted out of its fetch: the caller is one `android.util.Log`
+ * call away from being unreachable, and `android.util.Log` is an unmocked stub in a
+ * JVM unit test. Callers own the I/O and the logging; this owns the decision.
+ */
+fun bcvWeekendSamples(
+    samples: List<RateSample>,
+    zoneId: ZoneId = ZoneId.systemDefault()
+): List<RateSample> = samples.filter { sample ->
+    val weekend = localDateOf(sample.timestampEpochMillis, zoneId).dayOfWeek.let {
+        it == DayOfWeek.SATURDAY || it == DayOfWeek.SUNDAY
+    }
+    weekend && (sample.fuente == "usd" || sample.fuente == "eur")
+}
 
 fun rateYearName(epochMillis: Long, zoneId: ZoneId = ZoneId.systemDefault()): String =
     "rates-${yearOf(epochMillis, zoneId)}.json"

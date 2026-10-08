@@ -49,7 +49,7 @@ class ApiDolarRepository : DolarRepository {
             val body = response.body?.string().orEmpty()
             Log.d(TAG, "Body: ${body.take(200)}")
             if (code != 200) throw IOException("HTTP $code")
-            parseBcv(body)
+            parseBcvPayload(body)
         }
     }
 
@@ -75,35 +75,6 @@ class ApiDolarRepository : DolarRepository {
             .url(url)
             .header("Accept", "application/json")
             .build()
-
-    private fun parseBcv(body: String): List<DolarQuote> {
-        val root = JSONObject(body)
-        val current = root.getJSONObject("current")
-        val previous = root.optJSONObject("previous")
-        val change = root.optJSONObject("changePercentage")
-        val date = current.optString("date", "")
-        val previousDate = previous?.optString("date")
-        return listOf(
-            DolarQuote(
-                fuente = "usd",
-                nombre = "Dólar (BCV)",
-                promedio = current.optDouble("usd", 0.0),
-                anterior = previous?.optDouble("usd"),
-                variacion = change?.optDouble("usd"),
-                fechaActualizacion = date,
-                fechaAnterior = previousDate
-            ),
-            DolarQuote(
-                fuente = "eur",
-                nombre = "Euro (BCV)",
-                promedio = current.optDouble("eur", 0.0),
-                anterior = previous?.optDouble("eur"),
-                variacion = change?.optDouble("eur"),
-                fechaActualizacion = date,
-                fechaAnterior = previousDate
-            )
-        )
-    }
 
     private fun parseUsdt(body: String): DolarQuote {
         val root = JSONObject(body)
@@ -133,4 +104,48 @@ class ApiDolarRepository : DolarRepository {
         private const val BINANCE_BODY =
             """{"asset":"USDT","fiat":"VES","merchantCheck":false,"page":1,"rows":20,"payTypes":[],"publisherType":null,"tradeType":"BUY"}"""
     }
+}
+
+/**
+ * Turns one BCV payload into both official quotes.
+ *
+ * internal, not private, and top-level rather than a member: this is the whole
+ * risk of talking to the BCV endpoint — the shape is owned by the endpoint, not by
+ * this app, and the app shows zeros when it is wrong — and as a `private` method
+ * behind `fetchBcv()` it was only reachable through a live HTTP request, so no
+ * JVM test could reach it. [BcvPayloadParsingTest] pins the real shape against
+ * this exact function, not a copy of it.
+ *
+ * `current` is required and everything else is optional, because that is what the
+ * endpoint actually sends: `previous` and `changePercentage` are absent before a
+ * change has been published. A missing optional block yields null rather than
+ * 0.0, since a zero would read as "the rate collapsed" instead of "unknown".
+ */
+internal fun parseBcvPayload(body: String): List<DolarQuote> {
+    val root = JSONObject(body)
+    val current = root.getJSONObject("current")
+    val previous = root.optJSONObject("previous")
+    val change = root.optJSONObject("changePercentage")
+    val date = current.optString("date", "")
+    val previousDate = previous?.optString("date")
+    return listOf(
+        DolarQuote(
+            fuente = "usd",
+            nombre = "Dólar (BCV)",
+            promedio = current.optDouble("usd", 0.0),
+            anterior = previous?.optDouble("usd"),
+            variacion = change?.optDouble("usd"),
+            fechaActualizacion = date,
+            fechaAnterior = previousDate
+        ),
+        DolarQuote(
+            fuente = "eur",
+            nombre = "Euro (BCV)",
+            promedio = current.optDouble("eur", 0.0),
+            anterior = previous?.optDouble("eur"),
+            variacion = change?.optDouble("eur"),
+            fechaActualizacion = date,
+            fechaAnterior = previousDate
+        )
+    )
 }

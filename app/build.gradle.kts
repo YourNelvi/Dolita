@@ -172,6 +172,19 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        unitTests {
+            // android.util.Log is unmocked in JVM tests, so any production path
+            // that logs throws RuntimeException: Method d in android.util.Log not
+            // mocked. That is why the weekend-purge decision had to be lifted out
+            // of its logging caller to be testable at all: the log, not the
+            // behaviour, was the failure. Returning defaults lets a test assert
+            // what the code DOES rather than steering the implementation around
+            // where it is allowed to log.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {

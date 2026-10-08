@@ -17,11 +17,14 @@ import com.example.erp.data.ThemeMode
 import com.example.erp.data.ThemePreferencesImpl
 import com.example.erp.data.ThemeRepository
 import com.example.erp.data.ThemeRepositoryImpl
+import com.example.erp.data.deleteLegacyHistoryFiles
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -73,6 +76,7 @@ open class DolarViewModel @JvmOverloads constructor(
 
     init {
         viewModelScope.launch {
+            removeLegacyHistoryFiles()
             historyStore.ensureSeeded()
             // Always try to fetch historical data - merge logic handles deduplication.
             // This ensures EUR data is fetched even when USD data already exists.
@@ -81,6 +85,39 @@ open class DolarViewModel @JvmOverloads constructor(
             QuoteScheduler.scheduleHourlyUsdtFetch(application)
             load()
         }
+    }
+
+    /**
+     * Sweeps the pre-unification flat history files out of `filesDir`, once, on
+     * every launch.
+     *
+     * Those files are unreachable now that every reader and writer uses
+     * `filesDir/rate_history/`, and they are not recoverable history either:
+     * [RateHistoryStore.ensureSeeded] and `fetchAndPopulateHistorical` refill
+     * from the API. So they are deleted, not migrated. See
+     * [deleteLegacyHistoryFiles] for why that is safe and why the sweep is
+     * restricted to the exact file shape.
+     *
+     * Running before [RateHistoryStore.ensureSeeded] is deliberate: it is cleanup
+     * of a directory nothing reads any more, so the order cannot affect seeding.
+     *
+     * Failure is logged and swallowed. This runs in `init`, on the way to the
+     * first frame, and a handful of stale bytes is never worth an app that will
+     * not launch.
+     */
+    private suspend fun removeLegacyHistoryFiles() = withContext(Dispatchers.IO) {
+        // Derived from the canonical directory rather than hardcoding filesDir, so
+        // this can never drift from where FileHistoryStore.defaultDir writes.
+        val legacyDir = FileHistoryStore.defaultDir(getApplication()).parentFile ?: return@withContext
+        runCatching { deleteLegacyHistoryFiles(legacyDir) }
+            .onSuccess { removed ->
+                if (removed.isNotEmpty()) {
+                    android.util.Log.i("LegacyHistory", "Removed ${removed.size} legacy history files: $removed")
+                }
+            }
+            .onFailure { error ->
+                android.util.Log.w("LegacyHistory", "Legacy history cleanup failed: ${error.message}")
+            }
     }
 
     /**

@@ -93,11 +93,6 @@ private data class AlternativeMarket(
     val rate: Double
 )
 
-private fun currencySymbol(unit: String): String = when (unit) {
-    "EUR" -> "€"
-    else -> "$"
-}
-
 /**
  * @param onAmountsChanged reports the two amount fields as the user has them,
  *   in the digit encoding the fields hold ("123456" is 1.234,56). The share
