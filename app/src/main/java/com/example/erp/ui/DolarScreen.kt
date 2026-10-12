@@ -717,40 +717,48 @@ private fun DolarContent(
             )
         }
 
-        item { SectionHeader("Calculadora") }
+        // The quote is resolved once, above both items, because the header row
+        // needs it for the share action and the card needs it to convert with.
+        // Resolving it inside the card item left the header unable to offer the
+        // share, which is what pushed the button into its own row and the
+        // asymmetry the reader saw.
+        val calcQuote = CalculatorRateResolver.resolve(
+            today = selected,
+            future = uiState.futureQuote,
+            futureSource = uiState.calcRateSource,
+            selectedSample = uiState.selectedDateRate,
+            selectedLabel = uiState.selectedDateLabel,
+            dateSource = uiState.calcRateSource
+        )
+
+        // Title left, action right, on one line. A share button parked above the
+        // card left a column of empty space between the two, which read as a
+        // layout slip rather than as two things on the same row.
         item {
-            val calcQuote = CalculatorRateResolver.resolve(
-                today = selected,
-                future = uiState.futureQuote,
-                futureSource = uiState.calcRateSource,
-                selectedSample = uiState.selectedDateRate,
-                selectedLabel = uiState.selectedDateLabel,
-                dateSource = uiState.calcRateSource
-            )
-            calcQuote?.let { quote ->
-                Column {
-                    CalculatorCard(
-                        quote = quote,
-                        quotes = uiState.quotes,
-                        onAmountsChanged = { bolivares, divisa ->
-                            calculatorAmounts = CalculatorAmounts(bolivares, divisa)
-                        }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                SectionHeader("Calculadora")
+                if (calcQuote != null) {
+                    ShareCalculatorResultAction(
+                        quote = calcQuote,
+                        amounts = calculatorAmounts,
+                        highPrecision = highPrecision
                     )
-                    Spacer(Modifier.height(10.dp))
-                    // Inside the calculator section, not in the top bar: it
-                    // shares this card's answer, and it sits with the numbers it
-                    // is about.
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        ShareCalculatorResultAction(
-                            quote = quote,
-                            amounts = calculatorAmounts,
-                            highPrecision = highPrecision
-                        )
-                    }
                 }
+            }
+        }
+        item {
+            calcQuote?.let { quote ->
+                CalculatorCard(
+                    quote = quote,
+                    quotes = uiState.quotes,
+                    onAmountsChanged = { bolivares, divisa ->
+                        calculatorAmounts = CalculatorAmounts(bolivares, divisa)
+                    }
+                )
             }
         }
 
