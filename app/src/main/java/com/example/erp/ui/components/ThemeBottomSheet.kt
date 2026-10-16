@@ -55,6 +55,97 @@ import com.example.erp.ui.theme.cardBadgeColor
 import com.example.erp.ui.theme.cardBorderColor
 import com.example.erp.ui.theme.cardContainerColor
 
+/**
+ * Where the app's public links live.
+ *
+ * Both are constants rather than scattered literals so changing a handle is a
+ * one-line edit in one place, and so a link can never be wrong in one spot and
+ * right in another.
+ */
+object AppLinks {
+    const val GITHUB = "https://github.com/YourNelvi/Dolita"
+
+    /**
+     * Set to "" to hide the row entirely. Instagram shows nothing until a
+     * handle exists, which is honest: a row that opens a placeholder is worse
+     * than no row, because the reader cannot tell it is unfinished.
+     */
+    const val INSTAGRAM = ""
+}
+
+/**
+ * Open [url] outside the app.
+ *
+ * Guarded: a device with no browser, or one where the handler is missing,
+ * throws rather than crashing. A dead link must not take the settings sheet
+ * down with it.
+ */
+private fun openExternal(context: android.content.Context, url: String) {
+    if (url.isBlank()) return
+    runCatching {
+        context.startActivity(
+            android.content.Intent(
+                android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse(url)
+            )
+        )
+    }
+}
+
+/**
+ * GitHub and Instagram, at the bottom of the settings sheet.
+ *
+ * Two rows and nothing else: these are the only destinations the app has, and
+ * a section padded out with platforms it does not use would read as a directory
+ * rather than a set of links.
+ */
+@Composable
+private fun SocialLinksSection() {
+    val context = LocalContext.current
+
+    val destinos = listOf(
+        "GitHub" to AppLinks.GITHUB,
+        "Instagram" to AppLinks.INSTAGRAM
+    ).filter { it.second.isNotBlank() }
+
+    if (destinos.isEmpty()) return
+
+    Spacer(modifier = Modifier.height(24.dp))
+    androidx.compose.material3.HorizontalDivider(color = cardBorderColor())
+    Spacer(modifier = Modifier.height(12.dp))
+
+    Text(
+        text = "REDES",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+
+    destinos.forEach { (nombre, url) ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { openExternal(context, url) }
+                .padding(horizontal = 4.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = nombre,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = "Abrir",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
 @ExperimentalMaterial3Api
 @Composable
 fun ThemeBottomSheetContent(
@@ -335,6 +426,8 @@ fun ThemeBottomSheetContent(
         Spacer(modifier = Modifier.height(4.dp))
 
         PriceAlertSection()
+
+        SocialLinksSection()
     }
 
     // Theme Selection Dialog
