@@ -250,12 +250,12 @@ fun CalculatorCard(
                         // First keystroke replaces the prefilled default: keep only
                         // the freshly typed digits (cursor is pinned to the end, so
                         // the new input arrives appended to the current value).
-                        val fresh = raw.removePrefix(vesDigits).filter { it.isDigit() }.take(10)
+                        val fresh = CurrencyConverter.normalizeDigits(raw.removePrefix(vesDigits))
                         vesDigits = fresh
                         lastEdited = "ves"
                         divDigits = CurrencyConverter.vesToDiv(vesDigits, rate)
                     } else {
-                        vesDigits = raw.filter { it.isDigit() }.take(10)
+                        vesDigits = CurrencyConverter.normalizeDigits(raw)
                         lastEdited = "ves"
                         divDigits = CurrencyConverter.vesToDiv(vesDigits, rate)
                     }
@@ -290,12 +290,12 @@ fun CalculatorCard(
                     if (!hasTyped) {
                         hasTyped = true
                         // First keystroke replaces the prefilled default (see VES field).
-                        val fresh = raw.removePrefix(divDigits).filter { it.isDigit() }.take(10)
+                        val fresh = CurrencyConverter.normalizeDigits(raw.removePrefix(divDigits))
                         divDigits = fresh
                         lastEdited = "div"
                         vesDigits = CurrencyConverter.divToVes(divDigits, rate)
                     } else {
-                        divDigits = raw.filter { it.isDigit() }.take(10)
+                        divDigits = CurrencyConverter.normalizeDigits(raw)
                         lastEdited = "div"
                         vesDigits = CurrencyConverter.divToVes(divDigits, rate)
                     }
@@ -524,7 +524,102 @@ fun CalculatorCard(
                     )
                 }
             }
+
+            // What the differential actually costs, in every currency at once.
+            //
+            // The block above answers a percentage question; this answers the
+            // one a reader actually has. Someone hands you an amount in
+            // bolivares and asks, standing on the parallel tab, what that
+            // purchase overpaid -- not "15% apart" but "so many dollars, so many
+            // euros, so many bolivars". A percentage cannot be spent and this can.
+            //
+            // It used to be gated to the usdt tab, which hid the answer on the
+            // two tabs where a reader is most likely to ask it: the amount is
+            // entered in bolivares either way, and the answer does not change
+            // with which tab is open.
+            //
+            // `rate` is deliberately NOT the parallel here. On the usd and eur
+            // tabs `rate` IS the official rate for that currency, so passing it
+            // as the parallel priced both sides identically and the block
+            // rendered nothing at all -- an absence that looks like a missing
+            // feature rather than a wiring mistake. The comparison is always
+            // parallel against official, whichever tab happens to be open.
+            val amountInBsForDiff = if (editingBolivares) {
+                entered
+            } else {
+                entered?.let { it.multiply(BigDecimal.valueOf(rate)) }
+            }
+            val parallelRate = usdtRate
+            val officialRate = usdRate
+            val enMonedas = amountInBsForDiff?.let { bs ->
+                if (parallelRate != null && officialRate != null) {
+                    CurrencyConverter.differentialEnMonedas(
+                        amountInBs = bs,
+                        usdtRate = parallelRate,
+                        usdRate = officialRate,
+                        eurRate = eurRate
+                    )
+                } else {
+                    null
+                }
+            }
+
+            if (enMonedas != null) {
+                val overpaying = enMonedas.overpaying
+                Spacer(Modifier.height(14.dp))
+                androidx.compose.material3.HorizontalDivider(color = cardBorderColor())
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "Te cuesta de más",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    DifferentialRow("En bolívares", "Bs ${CurrencyConverter.format(enMonedas.extraBs.abs())}", overpaying)
+                    DifferentialRow("En dólares", "$ ${CurrencyConverter.format(enMonedas.extraUsd.abs())}", overpaying)
+                    DifferentialRow("En USDT", "USDT ${CurrencyConverter.format(enMonedas.extraUsdt.abs())}", overpaying)
+                    enMonedas.extraEur?.let { eur ->
+                        DifferentialRow(
+                            "En euros",
+                            "€ ${CurrencyConverter.format(eur.abs())}",
+                            overpaying
+                        )
+                    }
+                }
+            }
         }
+    }
+}
+
+/**
+ * One currency reading of the differential. The same value, one currency, no
+ * arithmetic for the reader — which is the whole point of showing it four times.
+ */
+@Composable
+private fun DifferentialRow(label: String, value: String, overpaying: Boolean) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Medium,
+            // A parallel rate under the official one would be a saving, and
+            // painting that red would be a lie.
+            color = if (overpaying) {
+                com.example.erp.ui.theme.DownRedLight
+            } else {
+                positiveColor()
+            }
+        )
     }
 }
 

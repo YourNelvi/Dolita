@@ -58,6 +58,32 @@ data class DifferentialCambiario(
  */
 object CurrencyConverter {
 
+    /** The digit string is capped at ten: eight integer digits plus two decimals. */
+    const val MAX_DIGITS = 10
+
+    /**
+     * Keeps a typed digit string usable.
+     *
+     * The field holds a digit string whose LAST TWO characters are the decimals,
+     * so a leading zero is a trap rather than a digit: "0" already reads as
+     * 0,00 because [parseDigits] left-pads to three characters, and every extra
+     * zero typed after it is accepted, grows the field and changes nothing. Ten
+     * presses of the zero key leave a dead string behind with no way to tell it
+     * apart from real input.
+     *
+     * So leading zeros are dropped. They never change the amount — "0500000"
+     * and "5000000" are the same 50.000,00 — and leaving them in shows the
+     * reader a number they did not type. A run that is all zeros collapses to a
+     * single zero so the key never occupies space, and an empty result stays
+     * empty rather than inventing a digit.
+     */
+    fun normalizeDigits(digits: String): String {
+        val capped = digits.filter { it.isDigit() }.take(MAX_DIGITS)
+        if (capped.isEmpty()) return ""
+        val stripped = capped.trimStart('0')
+        return if (stripped.isEmpty()) "0" else stripped
+    }
+
     /**
      * Reads the calculator's digit encoding: the last two digits are the
      * decimals, the rest is the integer part, and the string is left-padded to
@@ -129,7 +155,7 @@ object CurrencyConverter {
         return toDigits(format(result))
     }
 
-    /**
+/**
      * The cambiario differential for [entered], where [rate] is the parallel
      * rate in Bs per USDT and [usdRate] the official BCV rate in Bs per dollar.
      *
@@ -138,7 +164,7 @@ object CurrencyConverter {
      * way: 100 USDT and the 95.406 Bs those USDT are worth agree. Deriving them
      * from the field instead is how the same purchase reports two different
      * numbers depending on which box had focus.     *
-     * Null when the amount is not positive or a rate is unusable — an
+     * Null when the amount is not positive or a rate is unusable - an
      * unrendered differential beats a fabricated one.
      */
     fun differentialCambiario(
@@ -161,4 +187,75 @@ object CurrencyConverter {
         val costExtraBs = amountInBs.subtract(parallelDollars.multiply(usdBD))
         return DifferentialCambiario(entered, amountInBs, officialDollars, costExtraBs)
     }
+
+    /**
+     * What the differential actually costs, said in every currency at once.
+     *
+     * The case that asked for it: someone is standing on the parallel tab with
+     * an amount in bolivares and wants to know what that purchase overpaid —
+     * not as a percentage, but as money. A percentage says the two rates are 15%
+     * apart; it does not say how many dollars, how many euros or how many
+     * bolivars, and those are the numbers a reader actually needs.
+     *
+     * One figure, four readings. The amount in Bs is the cost; the rest are that
+     * same cost divided by each currency's own rate, which is what makes them
+     * comparable at a glance instead of forcing the reader to divide by hand.
+     *
+     * Every rate is Bs-per-unit and [usdtRate] is what creates the gap in the
+     * first place, so on the dollar side the USD and USDT readings coincide.
+     * That is arithmetic, not a duplicate row: they are the same money under two
+     * names, and the reader is better served by one line than by two that
+     * always agree.
+     *
+     * Null when the amount is not positive or any rate is unusable.
+     */
+    fun differentialEnMonedas(
+        amountInBs: BigDecimal,
+        usdtRate: Double,
+        usdRate: Double,
+        eurRate: Double?
+    ): DifferentialEnMonedas? {
+        if (amountInBs <= BigDecimal.ZERO) return null
+        if (usdtRate <= 0.0 || usdRate <= 0.0) return null
+        val usdt = BigDecimal.valueOf(usdtRate)
+        val usd = BigDecimal.valueOf(usdRate)
+
+        // What those parallel dollars would have cost at the official rate; the
+        // difference is what the purchase overpaid in bolivares.
+        //
+        // Rounded to cents BEFORE the zero test, because the intermediate
+        // division carries six decimals and leaves residue: with identical
+        // rates, 50000/875,65 comes back as 57,096212 and multiplied by 875,65
+        // again gives 49.999,99987 rather than 50.000. Un-rounded, a purchase
+        // that overpaid nothing reported a fraction of a bolivar as a cost.
+        val parallelDollars = amountInBs.divide(usdt, 6, RoundingMode.HALF_UP)
+        val extraBs = amountInBs
+            .subtract(parallelDollars.multiply(usd))
+            .setScale(2, RoundingMode.HALF_UP)
+        if (extraBs.signum() == 0) return null
+
+        val extraUsdt = extraBs.divide(usdt, 2, RoundingMode.HALF_UP)
+        val extraUsd = extraBs.divide(usd, 2, RoundingMode.HALF_UP)
+        val extraEur = eurRate
+            ?.takeIf { it > 0.0 }
+            ?.let { extraBs.divide(BigDecimal.valueOf(it), 2, RoundingMode.HALF_UP) }
+
+        return DifferentialEnMonedas(
+            extraBs = extraBs,
+            extraUsdt = extraUsdt,
+            extraUsd = extraUsd,
+            extraEur = extraEur
+        )
+    }
+}
+
+/** The overpayment of one purchase, expressed in every currency that prices it. */
+data class DifferentialEnMonedas(
+    val extraBs: BigDecimal,
+    val extraUsdt: BigDecimal,
+    val extraUsd: BigDecimal,
+    val extraEur: BigDecimal?
+) {
+/** True when the parallel rate charges MORE than the official one. */
+    val overpaying: Boolean get() = extraBs.signum() > 0
 }
