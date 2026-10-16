@@ -160,10 +160,27 @@ fun CalculatorCard(
     // refresh used to reset both fields, which wiped what the user was typing
     // and made the focused field jump under the LazyColumn's bring-into-view.
     LaunchedEffect(quote.fuente) {
-        hasTyped = false
-        lastEdited = "div"
-        divDigits = "100"
-        vesDigits = if (rate > 0.0) CurrencyConverter.toDigits(CurrencyConverter.format(BigDecimal.valueOf(rate))) else ""
+        if (!hasTyped) {
+            // Nothing of the reader's to preserve. This is the "one unit"
+            // preview the card opens with, so re-expressing it in the new
+            // currency is correct rather than a loss.
+            hasTyped = false
+            lastEdited = "div"
+            divDigits = "100"
+            vesDigits = if (rate > 0.0) CurrencyConverter.toDigits(CurrencyConverter.format(BigDecimal.valueOf(rate))) else ""
+        } else {
+            // The amount the reader typed is kept, and BOLIVARES is what is
+            // kept. Every currency prices the same bolivar, so the bolivares
+            // figure is the one amount that is comparable across tabs; switching
+            // from dollars to euros should re-price what they entered, not
+            // replace it with a unit's worth of the new currency.
+            //
+            // The foreign amount is derived from it, which is the whole point of
+            // the card: the rate factor changes, the quantity in the other
+            // currency changes, and the quantity they typed does not.
+            lastEdited = "ves"
+            divDigits = CurrencyConverter.vesToDiv(vesDigits, rate)
+        }
     }
 
     // A new rate re-prices the calculator but never touches the field being
