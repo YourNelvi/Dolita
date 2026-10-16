@@ -256,6 +256,57 @@ data class DifferentialEnMonedas(
     val extraUsd: BigDecimal,
     val extraEur: BigDecimal?
 ) {
-/** True when the parallel rate charges MORE than the official one. */
+    /** True when the parallel rate charges MORE than the official one. */
     val overpaying: Boolean get() = extraBs.signum() > 0
+}
+
+/**
+ * What the parallel market charges OVER the official one, per currency, in
+ * bolivares.
+ *
+ * Two DIFFERENT numbers, not one number translated. The dollar's gap and the
+ * euro's gap are independent facts: the euro parallel is derived through the
+ * dollar, so the euro carries its own spread. Expressing the dollar's gap in
+ * euros, which an earlier version did, answered a question nobody asked and
+ * buried the figure that was actually wanted.
+ *
+ * Both are money the reader spends, so both are quoted in bolivares — the unit
+ * the rate difference is decided in. Converting them into dollars or euros would
+ * divide away the very spread being reported.
+ */
+data class DiferenciasPorMoneda(
+    val dolarBs: BigDecimal?,
+    val euroBs: BigDecimal?
+)
+
+/**
+ * The overpayment per official currency, in bolivares.
+ *
+ * The dollar gap is the parallel USDT rate against the official dollar rate —
+ * P2P trades dollars, so that is the spread that exists. The euro gap is the
+ * euro's own: BCV quotes the official euro, the parallel euro is reached
+ * through the dollar, and the difference between the two is a second, larger
+ * number.
+ *
+ * A missing rate yields null for that currency rather than a zero, because a
+ * gap of "Bs 0,00" reads as "no premium exists" and is the opposite of "this
+ * rate is unknown".
+ */
+fun diferenciasPorMoneda(
+    usdRate: Double,
+    usdtRate: Double,
+    eurRate: Double?
+): DiferenciasPorMoneda {
+    val dolar = if (usdRate > 0.0 && usdtRate > 0.0) {
+        BigDecimal.valueOf(usdtRate - usdRate).setScale(2, RoundingMode.HALF_UP)
+    } else {
+        null
+    }
+    val euro = if (eurRate != null && eurRate > 0.0 && usdRate > 0.0 && usdtRate > 0.0) {
+        val paralelo = (eurRate / usdRate) * usdtRate
+        BigDecimal.valueOf(paralelo - eurRate).setScale(2, RoundingMode.HALF_UP)
+    } else {
+        null
+    }
+    return DiferenciasPorMoneda(dolarBs = dolar, euroBs = euro)
 }

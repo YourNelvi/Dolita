@@ -91,118 +91,52 @@ class CalculatorZerosAndDifferentialTest {
     // --------------------------------------------------------- differential
 
     @Test
-    fun `the overpayment is stated in bolivarares, dollars, USDT and euros`() {
-        val result = CurrencyConverter.differentialEnMonedas(
-            amountInBs = BigDecimal("50000"),
-            usdtRate = usdt,
-            usdRate = usd,
-            eurRate = eur
-        )!!
-
-        assertTrue("the parallel rate is above the official one here", result.overpaying)
-
-        // Bs 50.000 buys 49,590383 USDT at the parallel. Those same USDT would
-        // have cost 43.423,82 at the official rate, so the purchase overpaid
-        // Bs 6.576,18 — which is 7,51 USD, 6,52 USDT or 6,71 EUR of the same money.
-        assertEquals(BigDecimal("6576.18"), result.extraBs.setScale(2, RoundingMode.HALF_UP))
-        assertEquals(BigDecimal("7.51"), result.extraUsd)
-        assertEquals(BigDecimal("6.52"), result.extraUsdt)
-        assertEquals(BigDecimal("6.71"), result.extraEur)
+    fun `the dollar gap is the parallel against the official, in bolivares`() {
+        val d = diferenciasPorMoneda(usdRate = usd, usdtRate = usdt, eurRate = eur)
+        // 1008,26 - 875,65 = 132,61
+        assertEquals(BigDecimal("132.61"), d.dolarBs)
     }
 
     @Test
-    fun `every reading describes the same money within the rounding of a cent`() {
-        val r = CurrencyConverter.differentialEnMonedas(
-            amountInBs = BigDecimal("50000"),
-            usdtRate = usdt,
-            usdRate = usd,
-            eurRate = eur
-        )!!
-        val target = r.extraBs.setScale(2, RoundingMode.HALF_UP)
-
-        // Each reading is rounded to cents INDEPENDENTLY, so multiplying one back
-        // by its rate cannot reproduce the Bs figure exactly — half a cent of USD
-        // is several bolivarares. The bound is that half cent times the rate,
-        // and anything wider would mean a reading is describing different money.
-        assertAgrees("USD", r.extraUsd, usd, target)
-        assertAgrees("USDT", r.extraUsdt, usdt, target)
-        assertAgrees("EUR", r.extraEur!!, eur, target)
-    }
-
-    private fun assertAgrees(label: String, reading: BigDecimal, rate: Double, target: BigDecimal) {
-        val back = reading.multiply(BigDecimal.valueOf(rate)).abs()
-        val tolerance = BigDecimal.valueOf(0.005).multiply(BigDecimal.valueOf(rate))
-        val drift = back.subtract(target).abs()
+    fun `the euro gap is its own number, larger than the dollar's`() {
+        val d = diferenciasPorMoneda(usdRate = usd, usdtRate = usdt, eurRate = eur)
+        // The euro parallel is reached THROUGH the dollar: (980,61/875,65) *
+        // 1008,26 = 1.129,115330, so the euro gap is Bs 148,51 against the
+        // dollar's Bs 132,61. Reporting one figure for both would hide that
+        // euro is the wider one.
+        assertEquals(BigDecimal("148.51"), d.euroBs)
         assertTrue(
-            "$label reading $back drifts from $target by $drift, over the tolerance $tolerance",
-            drift <= tolerance
+            "the euro spread should be its own, larger number",
+            d.euroBs!! > d.dolarBs!!
         )
     }
 
     @Test
-    fun `the euro reading is omitted rather than invented when there is no euro rate`() {
-        val r = CurrencyConverter.differentialEnMonedas(
-            amountInBs = BigDecimal("50000"),
-            usdtRate = usdt,
-            usdRate = usd,
-            eurRate = null
-        )!!
-        assertNull("no euro rate means no euro figure, not a zero", r.extraEur)
+    fun `a missing rate yields no figure rather than a gap of zero`() {
+        // "Bs 0,00" reads as "no premium exists", which is the opposite of
+        // "this rate is unknown".
+        val d = diferenciasPorMoneda(usdRate = usd, usdtRate = usdt, eurRate = null)
+        assertNull(d.euroBs)
+        assertEquals(BigDecimal("132.61"), d.dolarBs)
     }
 
     @Test
-    fun `a zero euro rate is treated as no rate`() {
-        val r = CurrencyConverter.differentialEnMonedas(
-            amountInBs = BigDecimal("50000"),
-            usdtRate = usdt,
-            usdRate = usd,
-            eurRate = 0.0
-        )!!
-        assertNull(r.extraEur)
+    fun `an unusable rate yields nothing instead of a negative premium`() {
+        assertNull(diferenciasPorMoneda(0.0, usdt, eur).dolarBs)
+        assertNull(diferenciasPorMoneda(usd, 0.0, eur).dolarBs)
+        assertNull(diferenciasPorMoneda(0.0, usdt, eur).euroBs)
     }
 
     @Test
-    fun `an unusable rate yields nothing rather than a fabricated overpayment`() {
-        assertNull(
-            CurrencyConverter.differentialEnMonedas(
-                BigDecimal("50000"), usdtRate = 0.0, usdRate = usd, eurRate = eur
-            )
-        )
-        assertNull(
-            CurrencyConverter.differentialEnMonedas(
-                BigDecimal("50000"), usdtRate = usdt, usdRate = 0.0, eurRate = eur
-            )
-        )
-        assertNull(
-            CurrencyConverter.differentialEnMonedas(
-                BigDecimal.ZERO, usdtRate = usdt, usdRate = usd, eurRate = eur
-            )
-        )
+    fun `identical rates mean no premium on either currency`() {
+        val d = diferenciasPorMoneda(usdRate = usd, usdtRate = usd, eurRate = eur)
+        assertEquals(BigDecimal("0.00"), d.dolarBs)
+        assertEquals(BigDecimal("0.00"), d.euroBs)
     }
 
     @Test
-    fun `a saving is reported as a saving, not coloured as a loss`() {
-        // A parallel rate BELOW the official one means the reader saved. The
-        // sign has to survive the trip, because the colour follows it.
-        val r = CurrencyConverter.differentialEnMonedas(
-            amountInBs = BigDecimal("50000"),
-            usdtRate = 800.0,   // below the official
-            usdRate = usd,
-            eurRate = eur
-        )!!
-        assertTrue("expected a saving", !r.overpaying)
-        assertTrue("a saving is a negative cost in Bs", r.extraBs.signum() < 0)
-    }
-
-    @Test
-    fun `identical rates produce no differential at all`() {
-        assertNull(
-            CurrencyConverter.differentialEnMonedas(
-                amountInBs = BigDecimal("50000"),
-                usdtRate = usd,
-                usdRate = usd,
-                eurRate = eur
-            )
-        )
+    fun `a parallel below the official is reported as a negative, not a fabricated zero`() {
+        val d = diferenciasPorMoneda(usdRate = usd, usdtRate = 800.0, eurRate = eur)
+        assertTrue("a parallel under the official is a saving", d.dolarBs!! < BigDecimal.ZERO)
     }
 }
