@@ -48,6 +48,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import com.example.erp.R
 import com.example.erp.data.ThemeMode
 import com.example.erp.ui.theme.AppTheme
 import com.example.erp.ui.theme.accentColor
@@ -64,13 +65,7 @@ import com.example.erp.ui.theme.cardContainerColor
  */
 object AppLinks {
     const val GITHUB = "https://github.com/YourNelvi/Dolita"
-
-    /**
-     * Set to "" to hide the row entirely. Instagram shows nothing until a
-     * handle exists, which is honest: a row that opens a placeholder is worse
-     * than no row, because the reader cannot tell it is unfinished.
-     */
-    const val INSTAGRAM = ""
+    const val INSTAGRAM = "https://www.instagram.com/yournelvi/"
 }
 
 /**
@@ -104,9 +99,9 @@ private fun SocialLinksSection() {
     val context = LocalContext.current
 
     val destinos = listOf(
-        "GitHub" to AppLinks.GITHUB,
-        "Instagram" to AppLinks.INSTAGRAM
-    ).filter { it.second.isNotBlank() }
+        SocialLink("GitHub", AppLinks.GITHUB, R.drawable.ic_github, tintToTheme = true),
+        SocialLink("Instagram", AppLinks.INSTAGRAM, R.drawable.ic_instagram, tintToTheme = false)
+    )
 
     if (destinos.isEmpty()) return
 
@@ -121,17 +116,28 @@ private fun SocialLinksSection() {
     )
     Spacer(modifier = Modifier.height(8.dp))
 
-    destinos.forEach { (nombre, url) ->
+    destinos.forEach { link ->
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .clickable { openExternal(context, url) }
+                .clickable { openExternal(context, link.url) }
                 .padding(horizontal = 4.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Icon(
+                painter = androidx.compose.ui.res.painterResource(link.icon),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = if (link.tintToTheme) {
+                    androidx.compose.material3.LocalContentColor.current
+                } else {
+                    Color.Unspecified
+                }
+            )
+            Spacer(modifier = Modifier.width(12.dp))
             Text(
-                text = nombre,
+                text = link.nombre,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface
@@ -145,6 +151,21 @@ private fun SocialLinksSection() {
         }
     }
 }
+
+/**
+ * One destination: what it is called, where it goes, which mark shows it, and
+ * whether that mark should follow the theme.
+ *
+ * A monochrome mark (GitHub) has to be tinted or it disappears on one of the two
+ * backgrounds; a mark that carries its own brand colors (Instagram) must never be
+ * tinted, or the gradient collapses into a flat silhouette.
+ */
+private data class SocialLink(
+    val nombre: String,
+    val url: String,
+    val icon: Int,
+    val tintToTheme: Boolean
+)
 
 @ExperimentalMaterial3Api
 @Composable
