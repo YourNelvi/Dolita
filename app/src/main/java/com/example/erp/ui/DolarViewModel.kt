@@ -73,6 +73,7 @@ open class DolarViewModel @JvmOverloads constructor(
     val themeMode = themeRepository.themeMode
     val dynamicColorEnabled = themeRepository.dynamicColorEnabled
     val highPrecisionEnabled = themeRepository.highPrecisionEnabled
+    val amoledBlackEnabled = themeRepository.amoledBlackEnabled
 
     init {
         viewModelScope.launch {
@@ -449,6 +450,12 @@ open class DolarViewModel @JvmOverloads constructor(
     fun setHighPrecisionEnabled(enabled: Boolean) {
         viewModelScope.launch {
             themeRepository.setHighPrecisionEnabled(enabled)
+        }
+    }
+
+    fun setAmoledBlackEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            themeRepository.setAmoledBlackEnabled(enabled)
         }
     }
 

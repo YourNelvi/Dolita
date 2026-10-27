@@ -198,6 +198,7 @@ fun DolarScreenContent(
     val currentMode by viewModel.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
     val currentDynamicColor by viewModel.dynamicColorEnabled.collectAsState(initial = false)
     val currentHighPrecision by viewModel.highPrecisionEnabled.collectAsState(initial = false)
+    val currentAmoledBlack by viewModel.amoledBlackEnabled.collectAsState(initial = false)
     val isDynamicColorAvailable = Build.VERSION.SDK_INT >= 31 // Android 12+
     // The refresh glyph completes one turn per fetch and parks there — a spin
     // that keeps turning forever pretends to be working.
@@ -326,6 +327,7 @@ fun DolarScreenContent(
                         currentMode = currentMode,
                         currentDynamicColor = currentDynamicColor,
                         currentHighPrecision = currentHighPrecision,
+                        currentAmoledBlack = currentAmoledBlack,
                         onThemeChange = { theme ->
                             viewModel.setTheme(theme)
                             // NO cerrar — dejar al usuario seguir configurando
@@ -339,6 +341,9 @@ fun DolarScreenContent(
                         },
                         onHighPrecisionChange = { enabled ->
                             viewModel.setHighPrecisionEnabled(enabled)
+                        },
+                        onAmoledBlackChange = { enabled ->
+                            viewModel.setAmoledBlackEnabled(enabled)
                         },
                         isDynamicColorAvailable = isDynamicColorAvailable,
                         onDismiss = { showBottomSheet = false }

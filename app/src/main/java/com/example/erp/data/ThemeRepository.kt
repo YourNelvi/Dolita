@@ -17,6 +17,9 @@ interface ThemeRepository {
 
     val highPrecisionEnabled: Flow<Boolean>
     suspend fun setHighPrecisionEnabled(enabled: Boolean)
+
+    val amoledBlackEnabled: Flow<Boolean>
+    suspend fun setAmoledBlackEnabled(enabled: Boolean)
 }
 
 class ThemeRepositoryImpl(
@@ -49,5 +52,11 @@ class ThemeRepositoryImpl(
 
     override suspend fun setHighPrecisionEnabled(enabled: Boolean) {
         themePreferences.setHighPrecisionEnabled(enabled)
+    }
+
+    override val amoledBlackEnabled: Flow<Boolean> = themePreferences.amoledBlackEnabled
+
+    override suspend fun setAmoledBlackEnabled(enabled: Boolean) {
+        themePreferences.setAmoledBlackEnabled(enabled)
     }
 }

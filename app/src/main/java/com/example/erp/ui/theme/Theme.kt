@@ -106,7 +106,22 @@ private fun lightScheme(t: AppTheme) = lightColorScheme(
     onError = Color.White
 )
 
-private fun darkScheme(t: AppTheme) = darkColorScheme(
+/**
+ * The three surfaces the dark scheme is built from, so the same values reach
+ * both `darkScheme` and `cardContainerColor`. Holding them here is what lets
+ * the AMOLED variant swap all of them at once instead of leaving a component
+ * that reads `FintechSurface` directly stranded on the old value.
+ */
+data class DarkSurfaces(
+    val background: Color,
+    val surface: Color,
+    val capsule: Color
+)
+
+val FintechSurfaces = DarkSurfaces(FintechBackground, FintechSurface, FintechSurfaceCapsule)
+val AmoledSurfaces = DarkSurfaces(AmoledBackground, AmoledSurface, AmoledSurfaceCapsule)
+
+private fun darkScheme(t: AppTheme, s: DarkSurfaces = FintechSurfaces) = darkColorScheme(
     primary = Color(t.darkPrimary),
     onPrimary = Color(t.darkOnPrimary),
     // Selected-state containers become accent-tinted instead of M3 tonal fills.
@@ -116,21 +131,21 @@ private fun darkScheme(t: AppTheme) = darkColorScheme(
     onSecondary = Color(t.darkOnSecondary),
     tertiary = Color(t.darkTertiary),
     onTertiary = Color(t.darkOnTertiary),
-    tertiaryContainer = FintechSurfaceCapsule,
+    tertiaryContainer = s.capsule,
     onTertiaryContainer = Color(t.darkTertiary),
-    background = FintechBackground,
+    background = s.background,
     onBackground = FintechOnSurface,
-    surface = FintechSurface,
+    surface = s.surface,
     onSurface = FintechOnSurface,
-    surfaceVariant = FintechSurfaceCapsule,
+    surfaceVariant = s.capsule,
     onSurfaceVariant = FintechOnSurfaceVariant,
-    surfaceContainerLowest = FintechBackground,
-    surfaceContainerLow = FintechBackground,
-    surfaceContainer = FintechSurface,
-    surfaceContainerHigh = FintechSurface,
-    surfaceContainerHighest = FintechSurfaceCapsule,
-    surfaceBright = FintechSurface,
-    surfaceDim = FintechBackground,
+    surfaceContainerLowest = s.background,
+    surfaceContainerLow = s.background,
+    surfaceContainer = s.surface,
+    surfaceContainerHigh = s.surface,
+    surfaceContainerHighest = s.capsule,
+    surfaceBright = s.surface,
+    surfaceDim = s.background,
     outline = FintechOnSurfaceVariant.copy(alpha = 0.55f),
     outlineVariant = FintechBorder,
     error = Color(0xFFCF6679),
@@ -142,7 +157,14 @@ private fun darkScheme(t: AppTheme) = darkColorScheme(
 /** Card/input container: fintech surface on dark, previous tonal card look on light. */
 @Composable
 fun cardContainerColor(): Color =
-    if (isDarkTheme()) FintechSurface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    if (isDarkTheme()) {
+        // Read through the scheme, not the Fintech token, so the AMOLED variant
+        // reaches cards too. A component that hardcodes the token keeps painting
+        // #14161B over a #000000 background and the setting looks broken.
+        MaterialTheme.colorScheme.surface
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    }
 
 /** Hairline card border: rgba(255,255,255,0.07) on dark, soft dark outline on light. */
 @Composable
@@ -183,17 +205,40 @@ fun ERPTheme(
     darkTheme: Boolean? = null,
     dynamicColor: Boolean = true,
     theme: AppTheme = AppTheme.DOLAR_VERDE,
+    amoledBlack: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val effectiveDarkTheme = darkTheme ?: isSystemInDarkTheme()
     val selectedTheme = remember(theme) { mutableStateOf(theme) }
-    val colorScheme = when {
+    val amoled = effectiveDarkTheme && amoledBlack
+    val surfaces = if (amoled) AmoledSurfaces else FintechSurfaces
+    val baseScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (effectiveDarkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        effectiveDarkTheme -> darkScheme(selectedTheme.value)
+        effectiveDarkTheme -> darkScheme(selectedTheme.value, surfaces)
         else -> lightScheme(selectedTheme.value)
+    }
+    // Dynamic colour derives its whole palette from the wallpaper, so it has no
+    // notion of "off-black". Overriding the surface roles afterwards is what
+    // makes pure black work with dynamic colour on instead of silently ignored.
+    val colorScheme = if (amoled) {
+        baseScheme.copy(
+            background = surfaces.background,
+            onBackground = FintechOnSurface,
+            surface = surfaces.surface,
+            surfaceVariant = surfaces.capsule,
+            surfaceContainerLowest = surfaces.background,
+            surfaceContainerLow = surfaces.background,
+            surfaceContainer = surfaces.surface,
+            surfaceContainerHigh = surfaces.surface,
+            surfaceContainerHighest = surfaces.capsule,
+            surfaceBright = surfaces.surface,
+            surfaceDim = surfaces.background
+        )
+    } else {
+        baseScheme
     }
 
     val isDark = effectiveDarkTheme

@@ -174,10 +174,12 @@ fun ThemeBottomSheetContent(
     currentMode: ThemeMode,
     currentDynamicColor: Boolean,
     currentHighPrecision: Boolean,
+    currentAmoledBlack: Boolean,
     onThemeChange: (AppTheme) -> Unit,
     onModeChange: (ThemeMode) -> Unit,
     onDynamicColorChange: (Boolean) -> Unit,
     onHighPrecisionChange: (Boolean) -> Unit,
+    onAmoledBlackChange: (Boolean) -> Unit,
     isDynamicColorAvailable: Boolean,
     onDismiss: () -> Unit
 ) {
@@ -277,6 +279,38 @@ fun ThemeBottomSheetContent(
                 color = cardBorderColor()
             )
         }
+
+        // AMOLED pure black toggle. No auto-detection: Android exposes no API that
+        // reports whether the panel is AMOLED, and the Build.MODEL allow-lists that
+        // some apps use go stale the day a new phone ships. The user knows their
+        // screen; the app only has to honour the choice.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Negro puro (AMOLED)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "Fondo negro real en modo oscuro. En AMOLED esos píxeles se apagan",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = currentAmoledBlack,
+                onCheckedChange = { onAmoledBlackChange(!currentAmoledBlack) }
+            )
+        }
+        androidx.compose.material3.HorizontalDivider(
+            color = cardBorderColor()
+        )
 
         // High Precision Toggle
         Row(

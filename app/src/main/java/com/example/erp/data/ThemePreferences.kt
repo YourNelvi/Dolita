@@ -11,6 +11,7 @@ private const val SELECTED_THEME_KEY = "selected_theme"
 private const val THEME_MODE_KEY = "theme_mode"
 private const val DYNAMIC_COLOR_ENABLED_KEY = "dynamic_color_enabled"
 private const val HIGH_PRECISION_KEY = "high_precision_enabled"
+private const val AMOLED_BLACK_KEY = "amoled_black_enabled"
 private const val PREFS_NAME = "theme_prefs"
 
 /**
@@ -32,11 +33,13 @@ interface ThemePreferences {
     val themeMode: Flow<ThemeMode>
     val dynamicColorEnabled: Flow<Boolean>
     val highPrecisionEnabled: Flow<Boolean>
+    val amoledBlackEnabled: Flow<Boolean>
 
     suspend fun setSelectedTheme(themeName: String)
     suspend fun setThemeMode(mode: ThemeMode)
     suspend fun setDynamicColorEnabled(enabled: Boolean)
     suspend fun setHighPrecisionEnabled(enabled: Boolean)
+    suspend fun setAmoledBlackEnabled(enabled: Boolean)
 }
 
 class ThemePreferencesImpl(
@@ -60,6 +63,9 @@ class ThemePreferencesImpl(
     private val _highPrecisionEnabled = MutableStateFlow(prefs.getBoolean(HIGH_PRECISION_KEY, false))
     override val highPrecisionEnabled: Flow<Boolean> = _highPrecisionEnabled.asStateFlow()
 
+    private val _amoledBlackEnabled = MutableStateFlow(prefs.getBoolean(AMOLED_BLACK_KEY, false))
+    override val amoledBlackEnabled: Flow<Boolean> = _amoledBlackEnabled.asStateFlow()
+
     override suspend fun setSelectedTheme(themeName: String) {
         prefs.edit().putString(SELECTED_THEME_KEY, themeName).apply()
         _selectedTheme.value = themeName
@@ -78,5 +84,10 @@ class ThemePreferencesImpl(
     override suspend fun setHighPrecisionEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(HIGH_PRECISION_KEY, enabled).apply()
         _highPrecisionEnabled.value = enabled
+    }
+
+    override suspend fun setAmoledBlackEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(AMOLED_BLACK_KEY, enabled).apply()
+        _amoledBlackEnabled.value = enabled
     }
 }

@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
             val theme by viewModel.theme.collectAsState(initial = AppTheme.DOLAR_VERDE)
             val themeMode by viewModel.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
             val dynamicColor by viewModel.dynamicColorEnabled.collectAsState(initial = true)
+            val amoledBlack by viewModel.amoledBlackEnabled.collectAsState(initial = false)
 
             val explicitDarkTheme = when (themeMode) {
                 ThemeMode.SYSTEM -> null
@@ -78,7 +79,8 @@ class MainActivity : ComponentActivity() {
             ERPTheme(
                 darkTheme = explicitDarkTheme,
                 dynamicColor = dynamicColor,
-                theme = theme
+                theme = theme,
+                amoledBlack = amoledBlack
             ) {
                 // Update status bar icons based on current theme
                 val isDark = LocalIsDarkTheme.current
