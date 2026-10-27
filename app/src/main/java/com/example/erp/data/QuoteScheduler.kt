@@ -2,7 +2,9 @@ package com.example.erp.data
 
 import android.content.Context
 import android.util.Log
+import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequest
 import androidx.work.WorkManager
 import androidx.work.workDataOf
@@ -16,6 +18,27 @@ object QuoteScheduler {
     private const val FLEX_WINDOW_HOURS = 1L
 
     private val zone: ZoneId get() = ZoneId.systemDefault()
+
+    /**
+     * Gates every scheduled fetch. Both are deliberately conservative:
+     *
+     * `CONNECTED` because a worker that runs without a network wakes the device,
+     * opens a socket, fails, and leaves WorkManager to schedule a backoff retry.
+     * The retry is what costs - not the attempt.
+     *
+     * `requiresBatteryNotLow` because WorkManager does not cancel gated work, it
+     * waits for the condition. A deferred fetch still arrives once the device
+     * leaves the low-battery window, so nothing is lost by not spending a
+     * request at 8%.
+     *
+     * `requiresCharging` is absent on purpose: the app would then only ever
+     * update while plugged in, which is the opposite of a rate that changes
+     * daily.
+     */
+    internal val fetchConstraints: Constraints = Constraints.Builder()
+        .setRequiredNetworkType(NetworkType.CONNECTED)
+        .setRequiresBatteryNotLow(true)
+        .build()
 
     fun scheduleDailyFetch(context: Context) {
         // Morning: announce the rate of the day.
@@ -33,6 +56,7 @@ object QuoteScheduler {
                 TimeUnit.MILLISECONDS
             )
             .setInputData(workDataOf(FetchQuotesWorker.KEY_CHECK to FetchQuotesWorker.CHECK_MORNING))
+            .setConstraints(fetchConstraints)
             .addTag(MORNING_WORK_NAME)
             .build()
 
@@ -52,17 +76,24 @@ object QuoteScheduler {
                 TimeUnit.MILLISECONDS
             )
             .setInputData(workDataOf(FetchQuotesWorker.KEY_CHECK to FetchQuotesWorker.CHECK_EVENING))
+            .setConstraints(fetchConstraints)
             .addTag(EVENING_WORK_NAME)
             .build()
 
+        // UPDATE, not KEEP. This is what makes the constraints above reach a
+        // device that already has the app installed: KEEP leaves an existing
+        // work request completely untouched, so a build that only changes the
+        // request would silently keep running the old one forever. UPDATE
+        // rewrites the existing request in place instead of resetting the
+        // schedule, so the next run time survives the app update.
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             MORNING_WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             morning
         )
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             EVENING_WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             evening
         )
         Log.d(
@@ -84,13 +115,14 @@ object QuoteScheduler {
                 RateSchedulePolicy.millisToNextHour(System.currentTimeMillis(), zone),
                 TimeUnit.MILLISECONDS
             )
+            .setConstraints(fetchConstraints)
             .addTag(USDT_WORK_NAME)
             .build()
 
         WorkManager.getInstance(context)
             .enqueueUniquePeriodicWork(
                 USDT_WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
+                ExistingPeriodicWorkPolicy.UPDATE,
                 workRequest
             )
         Log.d(
