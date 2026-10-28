@@ -90,6 +90,8 @@ import com.example.erp.data.DolarQuote
 import com.example.erp.data.Error as AppError
 import com.example.erp.data.HISTORICO_PUNTOS
 import com.example.erp.data.RateSample
+import com.example.erp.data.ShareCard
+import com.example.erp.data.ShareImage
 import com.example.erp.data.ThemeMode
 import com.example.erp.ui.components.CalculatorCard
 import com.example.erp.ui.components.Emphasized
@@ -518,22 +520,12 @@ private fun ShareIconButton(
 }
 
 /**
- * Hands plain text to the system chooser. One place decides HOW this app shares,
- * so every payload leaves the device as `ACTION_SEND` text — never a file, never
- * an image, never a rendered screenshot of a number.
- */
-private fun sharePlainText(context: android.content.Context, text: String, chooserTitle: String) {
-    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(android.content.Intent.EXTRA_TEXT, text)
-    }
-    context.startActivity(android.content.Intent.createChooser(send, chooserTitle))
-}
-
-/**
- * Share a rate as plain text. Text and not a picture: the reader pastes this
- * into a chat, where a rendered image of a number is a worse number than the
- * number itself.
+ * Share a rate as a card plus its caption.
+ *
+ * The card is what makes the number read as the day's rate instead of a line of
+ * chat; the caption is what keeps the number selectable, because the reader
+ * still wants to paste it into a calculator. `ShareImage` owns that decision and
+ * falls back to text alone when the card cannot be drawn.
  */
 @Composable
 private fun ShareRateAction(
@@ -548,7 +540,7 @@ private fun ShareRateAction(
                 quote = quote,
                 highPrecision = highPrecision
             ) ?: return@ShareIconButton
-            sharePlainText(context, text, "Compartir tasa")
+            ShareImage.share(context, ShareCard.fromText(text), text, "Compartir tasa")
         },
         contentDescription = "Compartir ${quote?.nombre ?: "la tasa"}",
         modifier = modifier
@@ -579,7 +571,7 @@ private fun ShareCalculatorResultAction(
                 divisaDigits = amounts.divisaDigits,
                 highPrecision = highPrecision
             ) ?: return@ShareIconButton
-            sharePlainText(context, text, "Compartir cálculo")
+            ShareImage.share(context, ShareCard.fromText(text), text, "Compartir cálculo")
         },
         contentDescription = "Compartir el cálculo",
         modifier = modifier

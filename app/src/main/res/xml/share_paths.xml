@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!--
+      Shared cards live in the cache directory: they are derived from data the
+      app already has, they are regenerated on every share, and a copy that
+      outlives its day is a wrong rate with a date that looks current.
+      cache-path also means the system can reclaim them under storage pressure
+      without the app having to ask.
+    -->
+    <cache-path name="shared_cards" path="share/" />
+</paths>

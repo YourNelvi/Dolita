@@ -9,9 +9,13 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * The text a rate is shared as — plain `EXTRA_TEXT`, no image and no
- * FileProvider, because the reader pastes it into a chat and a picture of a
- * number is a worse number.
+ * The caption a rate is shared as.
+ *
+ * This is the `EXTRA_TEXT` half of the share: `ShareImage` draws a card out of
+ * these same lines and sends both together, so the rate reads as the day's rate
+ * while the number stays selectable. The payload stays plain text on purpose —
+ * it is what the reader pastes into a calculator, and it is what still goes out
+ * when the card cannot be drawn.
  *
  * A pure object with no Android types so the whole payload can be asserted on a
  * plain JVM: what actually leaves the device is decided here, not inside a

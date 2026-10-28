@@ -27,6 +27,21 @@
             </intent-filter>
         </activity>
 
+        <!--
+          Serves the share card PNG out of the cache directory. Not exported:
+          only this app hands out URIs, and only to the app the user picks,
+          through a one-shot read grant on the send intent.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/share_paths" />
+        </provider>
+
         <!-- Rate Widget -->
         <receiver
             android:name=".widget.RateWidgetProvider"
