@@ -168,6 +168,69 @@ private data class SocialLink(
     val tintToTheme: Boolean
 )
 
+/**
+ * Fixed top bar of the settings sheet: the grabber that pulls it closed and the
+ * close button.
+ *
+ * Both live outside [ThemeBottomSheetContent] on purpose. They used to sit
+ * inside the scrolling list, so once a reader reached the bottom of the
+ * settings, the handle they were supposed to pull had scrolled off the top of
+ * the sheet and the only way out was the ✕.
+ */
+@Composable
+fun ThemeBottomSheetHeader(
+    onDismiss: () -> Unit,
+    grabberModifier: Modifier = Modifier
+) {
+    val configuration = LocalConfiguration.current
+    val horizontalPadding = if (configuration.screenWidthDp < 360) 16.dp else 24.dp
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            // The whole header drags, not just the pill: a 96dp strip is a
+            // target you have to aim at, and the sheet is dismissed by feel.
+            .then(grabberModifier)
+            .padding(horizontal = horizontalPadding)
+            .padding(top = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        // Wide and tall enough to be grabbed without aiming, while the visible
+        // pill stays slim.
+        Box(
+            modifier = Modifier
+                .width(96.dp)
+                .height(28.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(36.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.24f))
+            )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(1.dp, cardBorderColor(), CircleShape)
+                .clickable { onDismiss() },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "✕",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 16.sp
+            )
+        }
+    }
+}
+
 @ExperimentalMaterial3Api
 @Composable
 fun ThemeBottomSheetContent(
@@ -181,8 +244,7 @@ fun ThemeBottomSheetContent(
     onDynamicColorChange: (Boolean) -> Unit,
     onHighPrecisionChange: (Boolean) -> Unit,
     onAmoledBlackChange: (Boolean) -> Unit,
-    isDynamicColorAvailable: Boolean,
-    onDismiss: () -> Unit
+    isDynamicColorAvailable: Boolean
 ) {
     val configuration = LocalConfiguration.current
     val screenWidthDp = configuration.screenWidthDp
@@ -198,42 +260,8 @@ fun ThemeBottomSheetContent(
             // bottom of it was simply unreachable.
             .verticalScroll(rememberScrollState())
             .padding(horizontal = horizontalPadding)
-            .padding(top = 16.dp, bottom = 24.dp)
+            .padding(top = 8.dp, bottom = 24.dp)
     ) {
-        // Handle bar + Close button
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f))
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .border(1.dp, cardBorderColor(), CircleShape)
-                    .clickable { onDismiss() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "✕",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 16.sp
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
         Text(
             text = "Ajustes",
             style = MaterialTheme.typography.headlineSmall,

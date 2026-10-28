@@ -15,6 +15,9 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -66,6 +70,8 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -75,6 +81,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
@@ -83,6 +90,7 @@ import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -101,6 +109,7 @@ import com.example.erp.ui.components.MotionDurations
 import com.example.erp.ui.components.PulseDot
 import com.example.erp.ui.components.ShimmerBox
 import com.example.erp.ui.components.ThemeBottomSheetContent
+import com.example.erp.ui.components.ThemeBottomSheetHeader
 import com.example.erp.ui.components.TickerNumber
 import com.example.erp.ui.theme.AppTheme
 import com.example.erp.ui.theme.DownRedLight
@@ -123,6 +132,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import android.os.Build
 
 private val priceFormatter = NumberFormat.getNumberInstance(Locale.getDefault()).apply {
@@ -166,6 +176,16 @@ private data class CalculatorAmounts(
     val divisaDigits: String = ""
 )
 
+/**
+ * How far the settings sheet must be pulled down before releasing it closes it,
+ * as a fraction of its own height. A fifth reads as intent: less feels like a
+ * slip of the finger, more makes the sheet feel stuck.
+ */
+private const val SHEET_DISMISS_FRACTION = 0.2f
+
+/** Downward release speed that closes the sheet no matter how short the pull. */
+private const val SHEET_FLICK_VELOCITY = 1_200f
+
 @Composable
 fun DolarScreen(
     viewModel: DolarViewModel = viewModel()
@@ -196,6 +216,42 @@ fun DolarScreenContent(
     viewModel: DolarViewModel
 ) {
     var showBottomSheet by remember { mutableStateOf(false) }
+
+    // Drag-to-dismiss for the settings sheet. `sheetDragging` decides which
+    // value the sheet follows: the finger while the grabber is held, zero
+    // afterwards while it settles back.
+    var sheetDragOffset by remember { mutableFloatStateOf(0f) }
+    var sheetDragging by remember { mutableStateOf(false) }
+    var sheetHeightPx by remember { mutableIntStateOf(0) }
+    val sheetOffset by animateFloatAsState(
+        targetValue = if (sheetDragging) sheetDragOffset else 0f,
+        animationSpec = tween(
+            durationMillis = if (sheetDragging) 0 else MotionDurations.BASE,
+            easing = Emphasized
+        ),
+        label = "sheetDragOffset"
+    )
+    val sheetGrabberModifier = Modifier.draggable(
+        orientation = Orientation.Vertical,
+        state = rememberDraggableState { delta ->
+            sheetDragging = true
+            // Downward only: the sheet has nowhere to go up, and letting it
+            // lift off the bottom edge would expose the screen behind it.
+            sheetDragOffset = (sheetDragOffset + delta).coerceAtLeast(0f)
+        },
+        onDragStopped = { velocity ->
+            val pulledFarEnough = sheetDragOffset > sheetHeightPx * SHEET_DISMISS_FRACTION
+            val flickedDown = velocity > SHEET_FLICK_VELOCITY && sheetDragOffset > 0f
+            if (pulledFarEnough || flickedDown) {
+                // The offset is left untouched on purpose: the exit animation
+                // then starts from where the finger let go instead of snapping
+                // the sheet back to rest first. Reopening resets it.
+                showBottomSheet = false
+            } else {
+                sheetDragging = false
+            }
+        }
+    )
     val currentTheme by viewModel.theme.collectAsState(initial = AppTheme.AZUL_BANCARIO)
     val currentMode by viewModel.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
     val currentDynamicColor by viewModel.dynamicColorEnabled.collectAsState(initial = false)
@@ -244,7 +300,13 @@ fun DolarScreenContent(
                             modifier = Modifier.rotate(refreshTurn * 360f)
                         )
                     }
-                    IconButton(onClick = { showBottomSheet = true }) {
+                    IconButton(onClick = {
+                        // Reopening starts from rest even when the sheet was
+                        // last closed by a drag.
+                        sheetDragging = false
+                        sheetDragOffset = 0f
+                        showBottomSheet = true
+                    }) {
                         Icon(
                             imageVector = Icons.Rounded.Tune,
                             contentDescription = "Ajustes",
@@ -318,38 +380,47 @@ fun DolarScreenContent(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .onSizeChanged { sheetHeightPx = it.height }
+                        // Follows the finger while the grabber is held; zero at
+                        // rest, so the sheet still sits on the bottom edge.
+                        .offset { IntOffset(0, sheetOffset.roundToInt()) }
                         // Clip must wrap the background, otherwise the sheet's
                         // rounded top corners would be drawn over a square fill.
                         .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                         .background(MaterialTheme.colorScheme.surface)
                         .clickable { /* consume clicks */ }
                 ) {
-                    ThemeBottomSheetContent(
-                        currentTheme = currentTheme,
-                        currentMode = currentMode,
-                        currentDynamicColor = currentDynamicColor,
-                        currentHighPrecision = currentHighPrecision,
-                        currentAmoledBlack = currentAmoledBlack,
-                        onThemeChange = { theme ->
-                            viewModel.setTheme(theme)
-                            // NO cerrar — dejar al usuario seguir configurando
-                        },
-                        onModeChange = { mode ->
-                            viewModel.setThemeMode(mode)
-                            // NO cerrar — dejar al usuario seguir configurando
-                        },
-                        onDynamicColorChange = { enabled ->
-                            viewModel.setDynamicColorEnabled(enabled)
-                        },
-                        onHighPrecisionChange = { enabled ->
-                            viewModel.setHighPrecisionEnabled(enabled)
-                        },
-                        onAmoledBlackChange = { enabled ->
-                            viewModel.setAmoledBlackEnabled(enabled)
-                        },
-                        isDynamicColorAvailable = isDynamicColorAvailable,
-                        onDismiss = { showBottomSheet = false }
-                    )
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        ThemeBottomSheetHeader(
+                            onDismiss = { showBottomSheet = false },
+                            grabberModifier = sheetGrabberModifier
+                        )
+                        ThemeBottomSheetContent(
+                            currentTheme = currentTheme,
+                            currentMode = currentMode,
+                            currentDynamicColor = currentDynamicColor,
+                            currentHighPrecision = currentHighPrecision,
+                            currentAmoledBlack = currentAmoledBlack,
+                            onThemeChange = { theme ->
+                                viewModel.setTheme(theme)
+                                // NO cerrar — dejar al usuario seguir configurando
+                            },
+                            onModeChange = { mode ->
+                                viewModel.setThemeMode(mode)
+                                // NO cerrar — dejar al usuario seguir configurando
+                            },
+                            onDynamicColorChange = { enabled ->
+                                viewModel.setDynamicColorEnabled(enabled)
+                            },
+                            onHighPrecisionChange = { enabled ->
+                                viewModel.setHighPrecisionEnabled(enabled)
+                            },
+                            onAmoledBlackChange = { enabled ->
+                                viewModel.setAmoledBlackEnabled(enabled)
+                            },
+                            isDynamicColorAvailable = isDynamicColorAvailable
+                        )
+                    }
                 }
             }
         }
