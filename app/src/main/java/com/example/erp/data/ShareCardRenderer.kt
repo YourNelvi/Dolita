@@ -29,6 +29,16 @@ object ShareCardRenderer {
 
     private const val PAD = 96f
 
+    // Type sizes and the gaps between them live here so the height measured for
+    // centring and the positions actually drawn cannot drift apart.
+    private const val TITLE_SIZE = 46f
+    private const val SUPPORT_SIZE = 48f
+    private const val HEADLINE_MAX = 132f
+    private const val HEADLINE_MIN = 48f
+    private const val GAP_TITLE_TO_HEADLINE = 40f
+    private const val GAP_HEADLINE_TO_SUPPORT = 28f
+    private const val GAP_BETWEEN_SUPPORT = 14f
+
     private val background = Color.rgb(0x14, 0x16, 0x1B)
     private val surface = Color.rgb(0x19, 0x1C, 0x22)
     private val border = Color.rgb(0x2A, 0x2F, 0x38)
@@ -77,40 +87,59 @@ object ShareCardRenderer {
         )
 
         // What the number is.
-        val title = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = muted
-            textSize = 46f
+            textSize = TITLE_SIZE
             typeface = Typeface.create("sans-serif", Typeface.NORMAL)
         }
-        var y = PAD + 190f
-        canvas.drawText(card.title, PAD, y, title)
 
         // The figure, as large as it can be without touching the edges. This is
         // the one thing the reader is here for.
         val headline = card.body.firstOrNull()
-        if (headline != null) {
-            val headlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = onSurface
-                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            }
-            headlinePaint.textSize = fitSize(headlinePaint, headline, contentWidth, 132f, 48f)
-            y += 150f
-            canvas.drawText(headline, PAD, y, headlinePaint)
+        val headlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = onSurface
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         }
+        val headlineSize = headline
+            ?.let { fitSize(headlinePaint, it, contentWidth, HEADLINE_MAX, HEADLINE_MIN) }
+            ?: 0f
+        headlinePaint.textSize = headlineSize
 
         // Any further line, e.g. the rate that produced a conversion. Smaller
         // than the headline because it explains the figure, it is not the figure.
         val supporting = card.body.drop(1)
+        val supportPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = muted
+            textSize = SUPPORT_SIZE
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        }
+
+        // The block is measured before it is drawn, because it is centred in the
+        // space between the wordmark and the date. Anchoring it to the top
+        // instead left well over half the card empty: a figure pinned under the
+        // logo with a void beneath it reads as a layout that ran out of content,
+        // not as one with room to breathe.
+        var blockHeight = TITLE_SIZE
+        if (headline != null) blockHeight += GAP_TITLE_TO_HEADLINE + headlineSize
         if (supporting.isNotEmpty()) {
-            val supportPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = muted
-                textSize = 48f
-                typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-            }
-            supporting.forEach { line ->
-                y += 74f
-                canvas.drawText(line, PAD, y, supportPaint)
-            }
+            blockHeight += GAP_HEADLINE_TO_SUPPORT +
+                supporting.size * (SUPPORT_SIZE + GAP_BETWEEN_SUPPORT)
+        }
+
+        val regionTop = PAD + 210f
+        val regionBottom = HEIGHT - PAD - 130f
+        val slack = ((regionBottom - regionTop - blockHeight) / 2f).coerceAtLeast(0f)
+        var cursor = regionTop + slack
+
+        canvas.drawText(card.title, PAD, cursor + TITLE_SIZE, titlePaint)
+        cursor += TITLE_SIZE + GAP_TITLE_TO_HEADLINE
+        if (headline != null) {
+            canvas.drawText(headline, PAD, cursor + headlineSize, headlinePaint)
+            cursor += headlineSize + GAP_HEADLINE_TO_SUPPORT
+        }
+        supporting.forEach { line ->
+            canvas.drawText(line, PAD, cursor + SUPPORT_SIZE, supportPaint)
+            cursor += SUPPORT_SIZE + GAP_BETWEEN_SUPPORT
         }
 
         // The date, pinned to the bottom and separated by a hairline: a rate
