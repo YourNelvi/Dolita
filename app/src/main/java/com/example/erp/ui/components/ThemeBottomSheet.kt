@@ -50,6 +50,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import com.example.erp.R
 import com.example.erp.data.ThemeMode
+import com.example.erp.ui.versionLabel
 import com.example.erp.ui.theme.AppTheme
 import com.example.erp.ui.theme.accentColor
 import com.example.erp.ui.theme.cardBadgeColor
@@ -483,6 +484,20 @@ fun ThemeBottomSheetContent(
         PriceAlertSection()
 
         SocialLinksSection()
+
+        // Build identity at the very bottom. It is the first thing a bug report
+        // needs and the last thing a reader wants to scroll past, so it sits
+        // under the links rather than in a section of its own.
+        versionLabel(com.example.erp.BuildConfig.VERSION_NAME)?.let { label ->
+            Spacer(modifier = Modifier.height(20.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
     }
 
     // Theme Selection Dialog

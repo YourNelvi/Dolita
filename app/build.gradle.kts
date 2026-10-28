@@ -171,6 +171,9 @@ android {
     }
     buildFeatures {
         compose = true
+        // AGP 8+ stopped generating BuildConfig unless asked. The settings sheet
+        // shows the installed version, so the constant has to exist.
+        buildConfig = true
     }
 
     testOptions {

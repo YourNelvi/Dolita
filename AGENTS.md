@@ -72,6 +72,8 @@ This file gives future OpenCode sessions the minimal context needed to avoid mis
 - **Dynamic color** requires Android 12+ (SDK S). On devices < S, the fallback light/dark color schemes apply.
 - **Dependencies**: OkHttp 4.12.0 for networking; `org.json` (built into Android) for parsing; no serialization library, no DI, no Room/DataStore yet.
 - **Versions**: AGP 9.3.1, Kotlin 2.2.10, Gradle 9.5.0, Compose BOM 2026.02.01, `minSdk 30` / `compileSdk 37` / `targetSdk 37`, daemon toolchain JDK 25 (auto-provisioned via foojay).
+- **App versioning is a strict counter, and `app/build.gradle.kts` is the only place a version is written.** `versionCode` increases by exactly 1 on every release and is never reused or jumped (1.22.1=1019005 · 1.25.0=1019008 · 1.29.0=1019012). `versionName` increments the minor (`1.28.0` → `1.29.0`); a patch (`1.22.1`) exists only to fix an already-shipped minor. Each release is tagged `v<versionName>` on the `chore: bump version to <versionName>` commit that performs the bump, and that commit is the one built and published.
+- **The version text on screen is never written by hand.** The settings sheet renders `BuildConfig.VERSION_NAME`, which requires `buildFeatures { buildConfig = true }` in `app/build.gradle.kts` (off by default since AGP 8). The row therefore always matches the installed APK and needs no separate edit when bumping — bump the counter, and the sheet follows.
 
 ## If You Need to Investigate Further
 
