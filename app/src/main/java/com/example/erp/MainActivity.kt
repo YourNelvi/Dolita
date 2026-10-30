@@ -2,6 +2,7 @@ package com.example.erp
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -12,6 +13,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.app.ActivityCompat
@@ -33,6 +36,15 @@ private const val PERMISSION_PREFS_NAME = "notification_permission_prefs"
 private const val KEY_PERMISSION_REQUESTED = "post_notifications_requested"
 
 class MainActivity : ComponentActivity() {
+
+    /**
+     * Rate the notification the user tapped was about, handed to the screen once.
+     *
+     * A notification may cold-start the activity or arrive while it is already
+     * running; both paths write here, and the screen clears it after applying it
+     * so a recomposition does not steer the user back on every frame.
+     */
+    private var requestedRateSource by mutableStateOf<String?>(null)
 
     /**
      * Registered as a property initializer, so the registration happens while the activity is
@@ -60,6 +72,8 @@ class MainActivity : ComponentActivity() {
         // so the per-notify calls inside NotificationHelper are left exactly as they are.
         NotificationHelper.createChannels(this)
         requestNotificationPermissionIfNeeded()
+
+        requestedRateSource = intent?.getStringExtra(NotificationHelper.EXTRA_RATE_SOURCE)
 
         setContent {
             val viewModel: DolarViewModel = viewModel(
@@ -92,10 +106,22 @@ class MainActivity : ComponentActivity() {
                 }
 
                 DolarScreen(
-                    viewModel = viewModel
+                    viewModel = viewModel,
+                    requestedSource = requestedRateSource,
+                    onSourceRequestHandled = { requestedRateSource = null }
                 )
             }
         }
+    }
+
+    /**
+     * The app may already be running when a notification is tapped, so the new
+     * intent is adopted here too; [setIntent] keeps it as the current one.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        requestedRateSource = intent.getStringExtra(NotificationHelper.EXTRA_RATE_SOURCE)
     }
 
     /**

@@ -20,6 +20,7 @@ object NotificationState {
     private const val KEY_DAILY_RATE = "daily_rate"
     private const val KEY_NEXT_RATE = "next_rate"
     private const val KEY_PARALLEL = "parallel_rate"
+    private const val KEY_EURO_RATE = "euro_rate"
 
     /**
      * Records [value] for [topic] and returns true when it differs from what was
@@ -38,6 +39,13 @@ object NotificationState {
 
     fun shouldNotifyDailyRate(context: Context, rate: Double, date: String): Boolean =
         markIfChanged(context, KEY_DAILY_RATE, "$rate|$date")
+
+    /**
+     * The euro has its own record: it can move while the dollar stands still,
+     * and sharing the dollar's key would either hide it or re-announce both.
+     */
+    fun shouldNotifyEuroRate(context: Context, rate: Double, date: String): Boolean =
+        markIfChanged(context, KEY_EURO_RATE, "$rate|$date")
 
     fun shouldNotifyNextRate(context: Context, rate: Double, date: String): Boolean =
         markIfChanged(context, KEY_NEXT_RATE, "$rate|$date")

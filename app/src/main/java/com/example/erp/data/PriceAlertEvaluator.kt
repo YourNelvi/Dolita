@@ -44,6 +44,7 @@ object PriceAlertEvaluator {
             NotificationHelper.showPriceAlertNotification(
                 context = context,
                 sourceName = SOURCE_NAMES[fuente] ?: fuente.id,
+                rateSource = fuente.id,
                 rate = current,
                 direction = config.direction
             )

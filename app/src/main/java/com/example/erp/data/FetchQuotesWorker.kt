@@ -90,6 +90,25 @@ class FetchQuotesWorker(
                         Log.d(TAG, "Official rate unchanged; skipping daily notification")
                     }
                 }
+
+                // The euro is announced on its own because it can move while the
+                // dollar stands still, and the daily notice is gated on the dollar.
+                eurQuote?.let { eur ->
+                    if (NotificationState.shouldNotifyEuroRate(
+                            applicationContext,
+                            eur.promedio,
+                            eur.fechaActualizacion
+                        )
+                    ) {
+                        NotificationHelper.showEuroRateNotification(
+                            context = applicationContext,
+                            eurRate = eur.promedio,
+                            date = eur.fechaActualizacion
+                        )
+                    } else {
+                        Log.d(TAG, "Euro rate unchanged; skipping euro notification")
+                    }
+                }
             }
 
             // Both passes: the next day's rate, once, when it appears.
