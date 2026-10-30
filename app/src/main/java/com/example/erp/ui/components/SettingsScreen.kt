@@ -1,9 +1,13 @@
 package com.example.erp.ui.components
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,15 +22,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +57,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import com.example.erp.R
 import com.example.erp.data.ThemeMode
@@ -168,72 +179,20 @@ private data class SocialLink(
     val tintToTheme: Boolean
 )
 
+/** Sections of the settings screen a notification can jump to. */
+enum class SettingsSection { APARIENCIA, ALERTAS }
+
 /**
- * Fixed top bar of the settings sheet: the grabber that pulls it closed and the
- * close button.
+ * Settings as a full screen, not as a sheet.
  *
- * Both live outside [ThemeBottomSheetContent] on purpose. They used to sit
- * inside the scrolling list, so once a reader reached the bottom of the
- * settings, the handle they were supposed to pull had scrolled off the top of
- * the sheet and the only way out was the ✕.
+ * The sheet had two problems that tuning could not fix: its scroll competed
+ * with the drag that closed it, and a stray `clickable` on the panel swallowed
+ * taps meant for the rows underneath. A screen has neither — it owns the window,
+ * has no dismiss gesture, and leaves through the back arrow or Back.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ThemeBottomSheetHeader(
-    onDismiss: () -> Unit,
-    grabberModifier: Modifier = Modifier
-) {
-    val configuration = LocalConfiguration.current
-    val horizontalPadding = if (configuration.screenWidthDp < 360) 16.dp else 24.dp
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            // The whole header drags, not just the pill: a 96dp strip is a
-            // target you have to aim at, and the sheet is dismissed by feel.
-            .then(grabberModifier)
-            .padding(horizontal = horizontalPadding)
-            .padding(top = 12.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        // Wide and tall enough to be grabbed without aiming, while the visible
-        // pill stays slim.
-        Box(
-            modifier = Modifier
-                .width(96.dp)
-                .height(28.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .width(36.dp)
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.24f))
-            )
-        }
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .border(1.dp, cardBorderColor(), CircleShape)
-                .clickable { onDismiss() },
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "✕",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 16.sp
-            )
-        }
-    }
-}
-
-@ExperimentalMaterial3Api
-@Composable
-fun ThemeBottomSheetContent(
+fun SettingsScreen(
     currentTheme: AppTheme,
     currentMode: ThemeMode,
     currentDynamicColor: Boolean,
@@ -244,7 +203,73 @@ fun ThemeBottomSheetContent(
     onDynamicColorChange: (Boolean) -> Unit,
     onHighPrecisionChange: (Boolean) -> Unit,
     onAmoledBlackChange: (Boolean) -> Unit,
-    isDynamicColorAvailable: Boolean
+    isDynamicColorAvailable: Boolean,
+    onBack: () -> Unit,
+    focusSection: SettingsSection? = null
+) {
+    BackHandler(onBack = onBack)
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    Text(
+                        text = "Ajustes",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "Volver",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent
+                )
+            )
+        }
+    ) { innerPadding ->
+        SettingsContent(
+            currentTheme = currentTheme,
+            currentMode = currentMode,
+            currentDynamicColor = currentDynamicColor,
+            currentHighPrecision = currentHighPrecision,
+            currentAmoledBlack = currentAmoledBlack,
+            onThemeChange = onThemeChange,
+            onModeChange = onModeChange,
+            onDynamicColorChange = onDynamicColorChange,
+            onHighPrecisionChange = onHighPrecisionChange,
+            onAmoledBlackChange = onAmoledBlackChange,
+            isDynamicColorAvailable = isDynamicColorAvailable,
+            focusSection = focusSection,
+            modifier = Modifier.padding(innerPadding)
+        )
+    }
+}
+
+@ExperimentalMaterial3Api
+@Composable
+fun SettingsContent(
+    currentTheme: AppTheme,
+    currentMode: ThemeMode,
+    currentDynamicColor: Boolean,
+    currentHighPrecision: Boolean,
+    currentAmoledBlack: Boolean,
+    onThemeChange: (AppTheme) -> Unit,
+    onModeChange: (ThemeMode) -> Unit,
+    onDynamicColorChange: (Boolean) -> Unit,
+    onHighPrecisionChange: (Boolean) -> Unit,
+    onAmoledBlackChange: (Boolean) -> Unit,
+    isDynamicColorAvailable: Boolean,
+    focusSection: SettingsSection? = null,
+    modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
     val screenWidthDp = configuration.screenWidthDp
@@ -252,24 +277,28 @@ fun ThemeBottomSheetContent(
     val horizontalPadding = if (screenWidthDp < 360) 16.dp else 24.dp
 
     var showThemeDialog by remember { mutableStateOf(false) }
+    val alertsRequester = remember { BringIntoViewRequester() }
+
+    // A notification about a price alert lands here with ALERTAS, so the reader
+    // does not have to hunt for the section it is talking about.
+    LaunchedEffect(focusSection) {
+        if (focusSection == SettingsSection.ALERTAS) {
+            alertsRequester.bringIntoView()
+        }
+    }
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             // The settings list outgrew a phone screen. Without a scroll the
             // bottom of it was simply unreachable.
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(
+                state = rememberScrollState(),
+                overscrollEffect = null
+            )
             .padding(horizontal = horizontalPadding)
             .padding(top = 8.dp, bottom = 24.dp)
     ) {
-        Text(
-            text = "Ajustes",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold
-        )
-
-        Spacer(modifier = Modifier.height(4.dp))
-
         Text(
             text = "APARIENCIA",
             style = MaterialTheme.typography.labelSmall,
@@ -283,6 +312,14 @@ fun ThemeBottomSheetContent(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // The whole row toggles, not only the switch: a reader aims
+                    // at the label, and a switch that answers alone makes the
+                    // rest of the row look broken.
+                    .toggleable(
+                        value = currentDynamicColor,
+                        role = Role.Switch,
+                        onValueChange = onDynamicColorChange
+                    )
                     .padding(vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -301,7 +338,9 @@ fun ThemeBottomSheetContent(
                 }
                 Switch(
                     checked = currentDynamicColor,
-                    onCheckedChange = { onDynamicColorChange(!currentDynamicColor) }
+                    // The row owns the gesture; a switch that also handled it
+                    // would fire twice for one tap.
+                    onCheckedChange = null
                 )
             }
             androidx.compose.material3.HorizontalDivider(
@@ -316,6 +355,11 @@ fun ThemeBottomSheetContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .toggleable(
+                    value = currentAmoledBlack,
+                    role = Role.Switch,
+                    onValueChange = onAmoledBlackChange
+                )
                 .padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
@@ -334,7 +378,7 @@ fun ThemeBottomSheetContent(
             }
             Switch(
                 checked = currentAmoledBlack,
-                onCheckedChange = { onAmoledBlackChange(!currentAmoledBlack) }
+                onCheckedChange = null
             )
         }
         androidx.compose.material3.HorizontalDivider(
@@ -345,6 +389,11 @@ fun ThemeBottomSheetContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .toggleable(
+                    value = currentHighPrecision,
+                    role = Role.Switch,
+                    onValueChange = onHighPrecisionChange
+                )
                 .padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
@@ -363,7 +412,7 @@ fun ThemeBottomSheetContent(
             }
             Switch(
                 checked = currentHighPrecision,
-                onCheckedChange = { onHighPrecisionChange(!currentHighPrecision) }
+                onCheckedChange = null
             )
         }
         androidx.compose.material3.HorizontalDivider(
@@ -509,7 +558,9 @@ fun ThemeBottomSheetContent(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        PriceAlertSection()
+        Column(modifier = Modifier.bringIntoViewRequester(alertsRequester)) {
+            PriceAlertSection()
+        }
 
         SocialLinksSection()
 
@@ -565,6 +616,11 @@ private fun PriceAlertSection() {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .toggleable(
+                    value = config.enabled,
+                    role = Role.Switch,
+                    onValueChange = { persist(config.copy(enabled = it)) }
+                )
                 .padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
@@ -583,7 +639,7 @@ private fun PriceAlertSection() {
             }
             Switch(
                 checked = config.enabled,
-                onCheckedChange = { persist(config.copy(enabled = it)) }
+                onCheckedChange = null
             )
         }
 

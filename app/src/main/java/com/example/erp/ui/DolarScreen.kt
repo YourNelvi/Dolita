@@ -9,22 +9,19 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -68,12 +65,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,7 +78,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
@@ -90,7 +86,6 @@ import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -108,8 +103,7 @@ import com.example.erp.ui.components.EvolutionChart
 import com.example.erp.ui.components.MotionDurations
 import com.example.erp.ui.components.PulseDot
 import com.example.erp.ui.components.ShimmerBox
-import com.example.erp.ui.components.ThemeBottomSheetContent
-import com.example.erp.ui.components.ThemeBottomSheetHeader
+import com.example.erp.ui.components.SettingsScreen
 import com.example.erp.ui.components.TickerNumber
 import com.example.erp.ui.theme.AppTheme
 import com.example.erp.ui.theme.DownRedLight
@@ -176,33 +170,77 @@ private data class CalculatorAmounts(
     val divisaDigits: String = ""
 )
 
-/**
- * How far the settings sheet must be pulled down before releasing it closes it,
- * as a fraction of its own height. A fifth reads as intent: less feels like a
- * slip of the finger, more makes the sheet feel stuck.
- */
-private const val SHEET_DISMISS_FRACTION = 0.2f
-
-/** Downward release speed that closes the sheet no matter how short the pull. */
-private const val SHEET_FLICK_VELOCITY = 1_200f
-
 @Composable
 fun DolarScreen(
-    viewModel: DolarViewModel = viewModel()
+    viewModel: DolarViewModel = viewModel(),
+    requestedSource: String? = null,
+    onSourceRequestHandled: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    DolarScreenContent(
-        uiState = uiState,
-        onSelectCasa = viewModel::select,
-        // Explicit lambda, not `viewModel::load`: a method reference to a
-        // function with a default argument binds force=false, so the refresh
-        // button was silently asking the cache to render itself instead of
-        // asking the network — and "Reintentar" inherited the same no-op.
-        onRefresh = { viewModel.load(force = true) },
-        onToggleFutureRate = viewModel::toggleFutureRate,
-        onToggleSelectedDateRate = viewModel::toggleSelectedDateRate,
-        viewModel = viewModel
-    )
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+
+    // A tapped notification names the rate it was about. Honour it once and
+    // report back, so a recomposition does not keep steering the user.
+    LaunchedEffect(requestedSource) {
+        if (requestedSource != null) {
+            viewModel.select(requestedSource)
+            onSourceRequestHandled()
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        DolarScreenContent(
+            uiState = uiState,
+            onSelectCasa = viewModel::select,
+            // Explicit lambda, not `viewModel::load`: a method reference to a
+            // function with a default argument binds force=false, so the refresh
+            // button was silently asking the cache to render itself instead of
+            // asking the network — and "Reintentar" inherited the same no-op.
+            onRefresh = { viewModel.load(force = true) },
+            onToggleFutureRate = viewModel::toggleFutureRate,
+            onToggleSelectedDateRate = viewModel::toggleSelectedDateRate,
+            onOpenSettings = { showSettings = true },
+            viewModel = viewModel
+        )
+
+        // Settings is a window, not a sheet: it covers the screen, owns its own
+        // scroll and leaves through the back arrow or Back. The main screen stays
+        // composed underneath, so its scroll position survives the trip.
+        AnimatedVisibility(
+            visible = showSettings,
+            enter = fadeIn(animationSpec = tween(MotionDurations.BASE, easing = Emphasized)) +
+                slideInHorizontally(
+                    animationSpec = tween(MotionDurations.SLOW, easing = Emphasized),
+                    initialOffsetX = { it }
+                ),
+            exit = fadeOut(animationSpec = tween(MotionDurations.FAST)) +
+                slideOutHorizontally(
+                    animationSpec = tween(MotionDurations.BASE, easing = Emphasized),
+                    targetOffsetX = { it }
+                )
+        ) {
+            val currentTheme by viewModel.theme.collectAsState(initial = AppTheme.AZUL_BANCARIO)
+            val currentMode by viewModel.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
+            val currentDynamicColor by viewModel.dynamicColorEnabled.collectAsState(initial = false)
+            val currentHighPrecision by viewModel.highPrecisionEnabled.collectAsState(initial = false)
+            val currentAmoledBlack by viewModel.amoledBlackEnabled.collectAsState(initial = false)
+
+            SettingsScreen(
+                currentTheme = currentTheme,
+                currentMode = currentMode,
+                currentDynamicColor = currentDynamicColor,
+                currentHighPrecision = currentHighPrecision,
+                currentAmoledBlack = currentAmoledBlack,
+                onThemeChange = { viewModel.setTheme(it) },
+                onModeChange = { viewModel.setThemeMode(it) },
+                onDynamicColorChange = { viewModel.setDynamicColorEnabled(it) },
+                onHighPrecisionChange = { viewModel.setHighPrecisionEnabled(it) },
+                onAmoledBlackChange = { viewModel.setAmoledBlackEnabled(it) },
+                isDynamicColorAvailable = Build.VERSION.SDK_INT >= 31,
+                onBack = { showSettings = false }
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -213,51 +251,10 @@ fun DolarScreenContent(
     onRefresh: () -> Unit,
     onToggleFutureRate: () -> Unit,
     onToggleSelectedDateRate: () -> Unit = {},
+    onOpenSettings: () -> Unit,
     viewModel: DolarViewModel
 ) {
-    var showBottomSheet by remember { mutableStateOf(false) }
-
-    // Drag-to-dismiss for the settings sheet. `sheetDragging` decides which
-    // value the sheet follows: the finger while the grabber is held, zero
-    // afterwards while it settles back.
-    var sheetDragOffset by remember { mutableFloatStateOf(0f) }
-    var sheetDragging by remember { mutableStateOf(false) }
-    var sheetHeightPx by remember { mutableIntStateOf(0) }
-    val sheetOffset by animateFloatAsState(
-        targetValue = if (sheetDragging) sheetDragOffset else 0f,
-        animationSpec = tween(
-            durationMillis = if (sheetDragging) 0 else MotionDurations.BASE,
-            easing = Emphasized
-        ),
-        label = "sheetDragOffset"
-    )
-    val sheetGrabberModifier = Modifier.draggable(
-        orientation = Orientation.Vertical,
-        state = rememberDraggableState { delta ->
-            sheetDragging = true
-            // Downward only: the sheet has nowhere to go up, and letting it
-            // lift off the bottom edge would expose the screen behind it.
-            sheetDragOffset = (sheetDragOffset + delta).coerceAtLeast(0f)
-        },
-        onDragStopped = { velocity ->
-            val pulledFarEnough = sheetDragOffset > sheetHeightPx * SHEET_DISMISS_FRACTION
-            val flickedDown = velocity > SHEET_FLICK_VELOCITY && sheetDragOffset > 0f
-            if (pulledFarEnough || flickedDown) {
-                // The offset is left untouched on purpose: the exit animation
-                // then starts from where the finger let go instead of snapping
-                // the sheet back to rest first. Reopening resets it.
-                showBottomSheet = false
-            } else {
-                sheetDragging = false
-            }
-        }
-    )
-    val currentTheme by viewModel.theme.collectAsState(initial = AppTheme.AZUL_BANCARIO)
-    val currentMode by viewModel.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
-    val currentDynamicColor by viewModel.dynamicColorEnabled.collectAsState(initial = false)
     val currentHighPrecision by viewModel.highPrecisionEnabled.collectAsState(initial = false)
-    val currentAmoledBlack by viewModel.amoledBlackEnabled.collectAsState(initial = false)
-    val isDynamicColorAvailable = Build.VERSION.SDK_INT >= 31 // Android 12+
     // The refresh glyph completes one turn per fetch and parks there — a spin
     // that keeps turning forever pretends to be working.
     val refreshTurn by animateFloatAsState(
@@ -300,13 +297,7 @@ fun DolarScreenContent(
                             modifier = Modifier.rotate(refreshTurn * 360f)
                         )
                     }
-                    IconButton(onClick = {
-                        // Reopening starts from rest even when the sheet was
-                        // last closed by a drag.
-                        sheetDragging = false
-                        sheetDragOffset = 0f
-                        showBottomSheet = true
-                    }) {
+                    IconButton(onClick = onOpenSettings) {
                         Icon(
                             imageVector = Icons.Rounded.Tune,
                             contentDescription = "Ajustes",
@@ -349,79 +340,6 @@ fun DolarScreenContent(
                     highPrecision = currentHighPrecision,
                     modifier = contentModifier
                 )
-            }
-        }
-
-        // Custom Bottom Sheet Overlay — rises from the bottom edge and settles,
-        // exits the same way instead of blinking out of existence.
-        AnimatedVisibility(
-            visible = showBottomSheet,
-            enter = fadeIn(
-                animationSpec = tween(MotionDurations.BASE, easing = Emphasized)
-            ) + slideInVertically(
-                animationSpec = tween(MotionDurations.SLOW, easing = Emphasized),
-                initialOffsetY = { it / 3 }
-            ),
-            exit = fadeOut(animationSpec = tween(MotionDurations.FAST)) +
-                slideOutVertically(
-                    animationSpec = tween(MotionDurations.BASE, easing = Emphasized),
-                    targetOffsetY = { it / 3 }
-                )
-        ) {
-            // Back button closes the sheet instead of exiting the app
-            BackHandler { showBottomSheet = false }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.4f))
-                    .clickable { showBottomSheet = false },
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onSizeChanged { sheetHeightPx = it.height }
-                        // Follows the finger while the grabber is held; zero at
-                        // rest, so the sheet still sits on the bottom edge.
-                        .offset { IntOffset(0, sheetOffset.roundToInt()) }
-                        // Clip must wrap the background, otherwise the sheet's
-                        // rounded top corners would be drawn over a square fill.
-                        .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                        .background(MaterialTheme.colorScheme.surface)
-                        .clickable { /* consume clicks */ }
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        ThemeBottomSheetHeader(
-                            onDismiss = { showBottomSheet = false },
-                            grabberModifier = sheetGrabberModifier
-                        )
-                        ThemeBottomSheetContent(
-                            currentTheme = currentTheme,
-                            currentMode = currentMode,
-                            currentDynamicColor = currentDynamicColor,
-                            currentHighPrecision = currentHighPrecision,
-                            currentAmoledBlack = currentAmoledBlack,
-                            onThemeChange = { theme ->
-                                viewModel.setTheme(theme)
-                                // NO cerrar — dejar al usuario seguir configurando
-                            },
-                            onModeChange = { mode ->
-                                viewModel.setThemeMode(mode)
-                                // NO cerrar — dejar al usuario seguir configurando
-                            },
-                            onDynamicColorChange = { enabled ->
-                                viewModel.setDynamicColorEnabled(enabled)
-                            },
-                            onHighPrecisionChange = { enabled ->
-                                viewModel.setHighPrecisionEnabled(enabled)
-                            },
-                            onAmoledBlackChange = { enabled ->
-                                viewModel.setAmoledBlackEnabled(enabled)
-                            },
-                            isDynamicColorAvailable = isDynamicColorAvailable
-                        )
-                    }
-                }
             }
         }
     }
@@ -1866,6 +1784,7 @@ private fun DolarScreenPreview() {
             onSelectCasa = {},
             onRefresh = {},
             onToggleFutureRate = {},
+            onOpenSettings = {},
             viewModel = fakeViewModel
         )
     }
@@ -1887,6 +1806,7 @@ private fun DolarScreenSinDatosPreview() {
             onSelectCasa = {},
             onRefresh = {},
             onToggleFutureRate = {},
+            onOpenSettings = {},
             viewModel = fakeViewModel
         )
     }
