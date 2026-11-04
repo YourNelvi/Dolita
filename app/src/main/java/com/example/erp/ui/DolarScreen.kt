@@ -1509,6 +1509,10 @@ private fun CalendarLookupSection(
                 showDatePicker = false
                 viewModel.clearDateRate()
             },
+            // Pure black in AMOLED; the hairline keeps the dialog readable
+            // against the black scrim.
+            modifier = Modifier.border(1.dp, cardBorderColor(), RoundedCornerShape(28.dp)),
+            shape = RoundedCornerShape(28.dp),
             confirmButton = {
                 Button(onClick = {
                     datePickerState.selectedDateMillis?.let { millis ->

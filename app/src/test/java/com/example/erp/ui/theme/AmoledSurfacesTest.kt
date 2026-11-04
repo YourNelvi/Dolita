@@ -7,10 +7,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The AMOLED variant is only worth anything if the background is genuinely black
- * AND the surfaces stay distinguishable from it. Both halves are asserted here
- * because getting either wrong produces a setting that either saves nothing or
- * makes the card layout disappear.
+ * The AMOLED variant is only worth anything if the whole surface stack is
+ * genuinely black. Separation comes from the translucent hairline borders the
+ * cards and dialogs draw, not from a lifted container colour.
  */
 class AmoledSurfacesTest {
 
@@ -23,24 +22,24 @@ class AmoledSurfacesTest {
     }
 
     @Test
-    fun `amoled surface is lifted off the background so cards stay visible`() {
-        // Not equal: at the same value as the background a card is invisible and
-        // the whole screen reads as one flat sheet.
-        assertNotEquals(AmoledBackground, AmoledSurface)
-        assertTrue(
-            "a card must be lighter than a pure-black background",
-            AmoledSurface.red > AmoledBackground.red
-        )
+    fun `amoled surface is pure black`() {
+        // The whole point of the mode: a card at the same value as the background
+        // is not a bug here, it is the requirement. The hairline border is what
+        // keeps the card readable.
+        assertEquals(Color(0xFF000000), AmoledSurface)
+        assertEquals(0f, AmoledSurface.red, 0f)
+        assertEquals(0f, AmoledSurface.green, 0f)
+        assertEquals(0f, AmoledSurface.blue, 0f)
     }
 
     @Test
-    fun `amoled capsule is lifted above the card surface`() {
-        // Segmented tracks and inset controls sit inside cards, so they have to
-        // step up again or they vanish into the card they are drawn on.
-        assertTrue(
-            "inset controls must be lighter than the card they sit on",
-            AmoledSurfaceCapsule.red > AmoledSurface.red
-        )
+    fun `amoled capsule is pure black`() {
+        // Segmented tracks and inset controls are surfaces too; on AMOLED they
+        // must switch off as well instead of keeping a lifted grey.
+        assertEquals(Color(0xFF000000), AmoledSurfaceCapsule)
+        assertEquals(0f, AmoledSurfaceCapsule.red, 0f)
+        assertEquals(0f, AmoledSurfaceCapsule.green, 0f)
+        assertEquals(0f, AmoledSurfaceCapsule.blue, 0f)
     }
 
     @Test

@@ -120,4 +120,174 @@ class RateSchedulePolicyTest {
     fun `extra sources do not break completeness`() {
         assertTrue(RateSchedulePolicy.isSnapshotComplete(setOf("usd", "eur", "usdt", "future")))
     }
+
+    @Test
+    fun `schedule override lands on the target hour today when it is still ahead`() {
+        assertEquals(
+            at(2026, 9, 25, 8, 0),
+            RateSchedulePolicy.nextHourAt(at(2026, 9, 25, 6, 0), 8, caracas)
+        )
+    }
+
+    @Test
+    fun `schedule override rolls to tomorrow when the target hour has passed`() {
+        assertEquals(
+            at(2026, 9, 26, 8, 0),
+            RateSchedulePolicy.nextHourAt(at(2026, 9, 25, 20, 0), 8, caracas)
+        )
+    }
+
+    @Test
+    fun `schedule override never returns the current instant`() {
+        // Running exactly on the hour must move to the next day, not re-arm now.
+        assertEquals(
+            at(2026, 9, 26, 8, 0),
+            RateSchedulePolicy.nextHourAt(at(2026, 9, 25, 8, 0), 8, caracas)
+        )
+    }
+
+    @Test
+    fun `evening slot before the window is seven pm`() {
+        assertEquals(
+            at(2026, 9, 25, 19, 0),
+            RateSchedulePolicy.nextEveningSlot(at(2026, 9, 25, 15, 0), caracas)
+        )
+    }
+
+    @Test
+    fun `evening slot inside the window is the next hour`() {
+        assertEquals(
+            at(2026, 9, 25, 20, 0),
+            RateSchedulePolicy.nextEveningSlot(at(2026, 9, 25, 19, 0), caracas)
+        )
+        assertEquals(
+            at(2026, 9, 25, 22, 0),
+            RateSchedulePolicy.nextEveningSlot(at(2026, 9, 25, 21, 30), caracas)
+        )
+    }
+
+    @Test
+    fun `evening slot after the window is tomorrow seven pm`() {
+        assertEquals(
+            at(2026, 9, 26, 19, 0),
+            RateSchedulePolicy.nextEveningSlot(at(2026, 9, 25, 22, 0), caracas)
+        )
+        assertEquals(
+            at(2026, 9, 26, 19, 0),
+            RateSchedulePolicy.nextEveningSlot(at(2026, 9, 25, 23, 30), caracas)
+        )
+    }
+
+    @Test
+    fun `a delayed run after midnight still targets the same evening`() {
+        // It must not skip the coming evening by always adding a day.
+        assertEquals(
+            at(2026, 9, 25, 19, 0),
+            RateSchedulePolicy.nextHourAt(at(2026, 9, 25, 0, 30), 19, caracas)
+        )
+    }
+
+    @Test
+    fun `finding the next rate ends the evening retries`() {
+        assertEquals(
+            at(2026, 9, 26, 19, 0),
+            RateSchedulePolicy.nextEveningCheck(at(2026, 9, 25, 19, 0), true, caracas)
+        )
+    }
+
+    @Test
+    fun `a missing next rate retries hourly inside the window`() {
+        assertEquals(
+            at(2026, 9, 25, 20, 0),
+            RateSchedulePolicy.nextEveningCheck(at(2026, 9, 25, 19, 0), false, caracas)
+        )
+        assertEquals(
+            at(2026, 9, 25, 22, 0),
+            RateSchedulePolicy.nextEveningCheck(at(2026, 9, 25, 21, 30), false, caracas)
+        )
+    }
+
+    @Test
+    fun `the retry window closes before midnight`() {
+        assertEquals(
+            at(2026, 9, 26, 19, 0),
+            RateSchedulePolicy.nextEveningCheck(at(2026, 9, 25, 22, 0), false, caracas)
+        )
+    }
+
+    @Test
+    fun `today's official rate is stale once the publication hour arrives`() {
+        assertTrue(
+            RateSchedulePolicy.isOfficialRateStale("2026-11-03", at(2026, 11, 3, 16, 0), caracas)
+        )
+        assertFalse(
+            RateSchedulePolicy.isOfficialRateStale("2026-11-03", at(2026, 11, 3, 15, 59), caracas)
+        )
+    }
+
+    @Test
+    fun `tomorrow's official rate is fresh even after the publication hour`() {
+        assertFalse(
+            RateSchedulePolicy.isOfficialRateStale("2026-11-04", at(2026, 11, 3, 17, 0), caracas)
+        )
+    }
+
+    @Test
+    fun `an official rate older than today is always stale`() {
+        assertTrue(
+            RateSchedulePolicy.isOfficialRateStale("2026-11-02", at(2026, 11, 3, 9, 0), caracas)
+        )
+    }
+
+    @Test
+    fun `an unreadable official date is stale`() {
+        assertTrue(
+            RateSchedulePolicy.isOfficialRateStale(null, at(2026, 11, 3, 9, 0), caracas)
+        )
+        assertTrue(
+            RateSchedulePolicy.isOfficialRateStale("not-a-date", at(2026, 11, 3, 9, 0), caracas)
+        )
+    }
+
+    @Test
+    fun `a snapshot is fresh only when every source was refreshed recently`() {
+        val now = at(2026, 11, 3, 10, 0)
+        val oneHourAgo = now - 60 * 60_000L
+        val threeHoursAgo = now - 3 * 60 * 60_000L
+        val sources = setOf("usd", "eur", "usdt")
+
+        assertTrue(
+            RateSchedulePolicy.isSnapshotFresh(
+                mapOf("usd" to oneHourAgo, "eur" to oneHourAgo, "usdt" to oneHourAgo),
+                sources,
+                now
+            )
+        )
+        // The hourly USDT sample being recent must not vouch for a stale BCV rate.
+        assertFalse(
+            RateSchedulePolicy.isSnapshotFresh(
+                mapOf("usd" to threeHoursAgo, "eur" to oneHourAgo, "usdt" to oneHourAgo),
+                sources,
+                now
+            )
+        )
+    }
+
+    @Test
+    fun `a source with no timestamp cannot be trusted as fresh`() {
+        val now = at(2026, 11, 3, 10, 0)
+        assertFalse(
+            RateSchedulePolicy.isSnapshotFresh(
+                mapOf("eur" to now, "usdt" to now),
+                setOf("usd", "eur", "usdt"),
+                now
+            )
+        )
+    }
+
+    @Test
+    fun `an empty snapshot is never fresh`() {
+        val now = at(2026, 11, 3, 10, 0)
+        assertFalse(RateSchedulePolicy.isSnapshotFresh(emptyMap(), emptySet(), now))
+    }
 }

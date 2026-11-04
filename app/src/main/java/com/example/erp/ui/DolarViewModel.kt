@@ -129,11 +129,12 @@ open class DolarViewModel @JvmOverloads constructor(
      */
     fun load(force: Boolean = false) {
         viewModelScope.launch {
+            val now = System.currentTimeMillis()
             if (!force) {
                 val cached = runCatching {
                     com.example.erp.data.QuotesCache.getCached(getApplication())
                 }.getOrNull()
-                val age = cached?.let { System.currentTimeMillis() - it.timestamp } ?: Long.MAX_VALUE
+                val age = cached?.let { now - it.timestamp } ?: Long.MAX_VALUE
                 // "Fresh" is not enough: the BCV worker writes only usd+eur, so a
                 // recent cache can be missing the parallel market entirely. A
                 // snapshot that cannot fill every tab the UI offers is not a
@@ -141,13 +142,28 @@ open class DolarViewModel @JvmOverloads constructor(
                 // disappear until the hourly worker happened to run.
                 val sources = cached?.quotes?.map { it.fuente }?.toSet().orEmpty()
                 val complete = com.example.erp.data.RateSchedulePolicy.isSnapshotComplete(sources)
+                // Freshness is per source. A snapshot can be seconds old because
+                // the hourly USDT worker just wrote, and still carry an official
+                // rate from before BCV published the next day's number.
                 val fresh = cached != null && cached.quotes.isNotEmpty() &&
-                    com.example.erp.data.RateSchedulePolicy.isCacheFresh(age)
+                    com.example.erp.data.RateSchedulePolicy.isSnapshotFresh(
+                        cached.sourceTimestamps,
+                        sources,
+                        now
+                    )
+                // An official rate dated today stops being the newest after
+                // BCV's publication hour, even when it was fetched recently.
+                val officialStale = com.example.erp.data.RateSchedulePolicy.isOfficialRateStale(
+                    cached?.quotes?.firstOrNull { it.fuente == "usd" }?.fechaActualizacion,
+                    now,
+                    java.time.ZoneId.systemDefault()
+                )
                 android.util.Log.d(
                     "DolitaLoad",
-                    "cache=${sources.size} sources ($sources), age=${if (age == Long.MAX_VALUE) "none" else "${age / 1000}s"}, complete=$complete, fresh=$fresh"
+                    "cache=${sources.size} sources ($sources), age=${if (age == Long.MAX_VALUE) "none" else "${age / 1000}s"}, " +
+                        "complete=$complete, fresh=$fresh, officialStale=$officialStale"
                 )
-                if (fresh && complete) {
+                if (fresh && complete && !officialStale) {
                     applyQuotes(cached!!.quotes)
                     return@launch
                 }
@@ -285,10 +301,11 @@ open class DolarViewModel @JvmOverloads constructor(
                     )
                 }
 
-                // The next-rate alert belongs to the scheduled worker, and only
-                // when the number is new: announcing it on every app open was
-                // the same noise the daily alert had.
-                futureForSelected?.let { future ->
+                // The next-rate alert is about the dollar, not the selected tab:
+                // its body says "Dólar" and it opens the USD tab. Following the
+                // selection could label a euro rate as the dollar — or skip the
+                // alert entirely when the USDT tab was the last one open.
+                futureUsd?.let { future ->
                     if (com.example.erp.data.NotificationState.shouldNotifyNextRate(
                             getApplication(),
                             future.promedio,
@@ -300,8 +317,8 @@ open class DolarViewModel @JvmOverloads constructor(
                             nextUsdRate = future.promedio,
                             nextDate = future.fechaActualizacion
                         )
+                    }
                 }
-            }
         }
     }
 

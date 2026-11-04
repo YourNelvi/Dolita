@@ -24,12 +24,24 @@ class QuoteSchedulerConstraintsTest {
             NetworkType.CONNECTED,
             QuoteScheduler.fetchConstraints.requiredNetworkType
         )
+        assertEquals(
+            NetworkType.CONNECTED,
+            QuoteScheduler.bcvConstraints.requiredNetworkType
+        )
     }
 
     @Test
-    fun `every scheduled fetch waits for the battery to leave the low window`() {
-        // A gated request is deferred, never cancelled, so the rate still arrives
-        // once the device recovers.
+    fun `official rate checks are not deferred by the battery gate`() {
+        // WorkManager waits for a gated request instead of cancelling it. For
+        // the next day's rate that is the same as losing the notice: once the
+        // date rolls over, the evening pass has nothing new to announce.
+        assertFalse(QuoteScheduler.bcvConstraints.requiresBatteryNotLow())
+    }
+
+    @Test
+    fun `the hourly sample still waits for the battery to leave the low window`() {
+        // Nothing time-sensitive depends on the exact sample, so deferring it
+        // costs one request instead of an announcement.
         assertTrue(QuoteScheduler.fetchConstraints.requiresBatteryNotLow())
     }
 
@@ -38,6 +50,7 @@ class QuoteSchedulerConstraintsTest {
         // Requiring a charger would mean the daily rate only ever updates while
         // the phone is plugged in, which defeats a rate that changes daily.
         assertFalse(QuoteScheduler.fetchConstraints.requiresCharging())
+        assertFalse(QuoteScheduler.bcvConstraints.requiresCharging())
     }
 
     @Test
@@ -45,5 +58,6 @@ class QuoteSchedulerConstraintsTest {
         // Idle-only would push every fetch to whatever hour the phone happens to
         // be untouched, so the morning announcement could land at 23:00.
         assertFalse(QuoteScheduler.fetchConstraints.requiresDeviceIdle())
+        assertFalse(QuoteScheduler.bcvConstraints.requiresDeviceIdle())
     }
 }

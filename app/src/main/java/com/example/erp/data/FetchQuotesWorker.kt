@@ -13,11 +13,12 @@ import java.time.LocalDate
 /**
  * Official-rate worker (USD + EUR from BCV).
  *
- * Runs twice a day: a morning pass that announces the rate of the day, and an
- * evening pass that only looks for the next day's rate, which BCV publishes
- * later. It fetches BCV alone — the parallel market belongs to the hourly
- * worker — and it notifies only when something actually changed, because a job
- * on a cadence is not the same thing as news.
+ * Runs in the morning to announce the rate of the day, and again in the evening
+ * to look for the next day's rate, which BCV publishes later. The evening pass
+ * retries on the hour until 22:00 while that rate is still missing. It fetches
+ * BCV alone — the parallel market belongs to the hourly worker — and it
+ * notifies only when something actually changed, because a job on a cadence is
+ * not the same thing as news.
  */
 class FetchQuotesWorker(
     context: Context,
@@ -112,24 +113,36 @@ class FetchQuotesWorker(
             }
 
             // Both passes: the next day's rate, once, when it appears.
-            usdQuote?.let { usd ->
+            val nextRateQuote = usdQuote?.takeIf { usd ->
                 val quoteDate = runCatching { LocalDate.parse(usd.fechaActualizacion) }.getOrNull()
-                if (quoteDate != null && quoteDate.isAfter(LocalDate.now())) {
-                    if (NotificationState.shouldNotifyNextRate(
-                            applicationContext,
-                            usd.promedio,
-                            usd.fechaActualizacion
-                        )
-                    ) {
-                        NotificationHelper.showNextRateNotification(
-                            context = applicationContext,
-                            nextUsdRate = usd.promedio,
-                            nextDate = usd.fechaActualizacion
-                        )
-                    } else {
-                        Log.d(TAG, "Next rate already announced; skipping")
-                    }
+                quoteDate != null && quoteDate.isAfter(LocalDate.now())
+            }
+            if (nextRateQuote != null) {
+                if (NotificationState.shouldNotifyNextRate(
+                        applicationContext,
+                        nextRateQuote.promedio,
+                        nextRateQuote.fechaActualizacion
+                    )
+                ) {
+                    NotificationHelper.showNextRateNotification(
+                        context = applicationContext,
+                        nextUsdRate = nextRateQuote.promedio,
+                        nextDate = nextRateQuote.fechaActualizacion
+                    )
+                } else {
+                    Log.d(TAG, "Next rate already announced; skipping")
                 }
+            }
+
+            // Every run arms the next one explicitly. The evening pass retries
+            // on the hour until 22:00 while the next rate is missing, because a
+            // single run that landed before BCV published — or got deferred by
+            // Doze — used to lose the announcement for the whole day. The
+            // morning pass simply returns to its fixed hour.
+            if (isEveningCheck) {
+                QuoteScheduler.rescheduleNextRateCheck(applicationContext, nextRateQuote != null)
+            } else {
+                QuoteScheduler.pinMorningCheck(applicationContext)
             }
 
             Result.success()

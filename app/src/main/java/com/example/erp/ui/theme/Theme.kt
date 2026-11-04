@@ -88,6 +88,38 @@ enum class AppTheme(
         0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000,
         0xFFD32F2F, 0xFFFF8A80,
         "Rojo Degradado"
+    ),
+    TURQUESA_CARIBE(
+        0xFF00695C, 0xFF00796B, 0xFFEF6C00,
+        0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000,
+        0xFF4DD0E1, 0xFF80DEEA, 0xFFFFB74D,
+        0xFF000000, 0xFF000000, 0xFF000000,
+        0xFF00695C, 0xFF4DD0E1,
+        "Turquesa Caribe"
+    ),
+    MAGENTA_NEON(
+        0xFFAD1457, 0xFFC2185B, 0xFF00B8D4,
+        0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000,
+        0xFFFF4081, 0xFFFF80AB, 0xFF18FFFF,
+        0xFF000000, 0xFF000000, 0xFF000000,
+        0xFFAD1457, 0xFFFF4081,
+        "Magenta Neón"
+    ),
+    ORO_RESERVA(
+        0xFF8A6D00, 0xFF6D4C41, 0xFF37474F,
+        0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+        0xFFFFC400, 0xFFFFD54F, 0xFF90A4AE,
+        0xFF000000, 0xFF000000, 0xFF000000,
+        0xFF8A6D00, 0xFFFFC400,
+        "Oro Reserva"
+    ),
+    ROSA_PASTEL(
+        0xFF9C4A6B, 0xFF8E3A5A, 0xFF4DB6AC,
+        0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000,
+        0xFFF48FB1, 0xFFF8BBD0, 0xFF80CBC4,
+        0xFF000000, 0xFF000000, 0xFF000000,
+        0xFF9C4A6B, 0xFFF48FB1,
+        "Rosa Pastel"
     )
 }
 
@@ -235,7 +267,13 @@ fun ERPTheme(
             surfaceContainerHigh = surfaces.surface,
             surfaceContainerHighest = surfaces.capsule,
             surfaceBright = surfaces.surface,
-            surfaceDim = surfaces.background
+            surfaceDim = surfaces.background,
+            // Roles that can still carry a dynamic (or lifted) color into a
+            // component; on AMOLED they must collapse to black too. The tinted
+            // primaryContainer is intentional: it marks selection, not a surface.
+            secondaryContainer = surfaces.capsule,
+            tertiaryContainer = surfaces.capsule,
+            surfaceTint = surfaces.surface
         )
     } else {
         baseScheme

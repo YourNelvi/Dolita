@@ -74,14 +74,13 @@ val FintechOnSurface = Color(0xFFF2F4F7)       // primary text on dark
 val FintechOnSurfaceVariant = Color(0xFF9BA1AC) // secondary text on dark
 
 // ===== AMOLED (pure black) tokens =====
-// On an AMOLED panel a #000000 pixel is switched off, so the background costs
-// nothing to display. The surfaces are deliberately NOT pure black as well: at
-// the same value as the background a card becomes invisible and the layout
-// collapses into one undifferentiated sheet. They sit just far enough above it
-// to read as a raised surface, which is the whole job of a surface colour.
+// On an AMOLED panel a #000000 pixel is switched off. The whole surface stack
+// is pure black on purpose; cards and dialogs stay readable because every
+// floating surface carries the translucent hairline border, not because the
+// container is lifted off the background.
 val AmoledBackground = Color(0xFF000000)      // app background - pixels off
-val AmoledSurface = Color(0xFF0A0A0C)         // cards / sheets - barely lifted
-val AmoledSurfaceCapsule = Color(0xFF141418)  // segmented tracks, inset controls
+val AmoledSurface = Color(0xFF000000)         // cards / sheets - pixels off
+val AmoledSurfaceCapsule = Color(0xFF000000)  // segmented tracks - pixels off
 
 // Accent green: primary numeric values, positive signals, chart strokes,
 // focus rings and small active-state indicator dots ONLY.

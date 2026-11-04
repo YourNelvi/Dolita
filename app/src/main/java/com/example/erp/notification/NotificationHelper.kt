@@ -5,6 +5,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.example.erp.MainActivity
@@ -23,16 +25,40 @@ object NotificationHelper {
      */
     const val EXTRA_RATE_SOURCE = "com.example.erp.extra.RATE_SOURCE"
 
-    private const val CHANNEL_ID_DAILY = "dolar_daily_rate"
-    private const val CHANNEL_ID_NEXT = "dolar_next_rate"
-    private const val CHANNEL_ID_USDT = "dolar_usdt_hourly"
+    // A channel's sound is frozen by the system once the channel exists, so a
+    // plain code change never reaches an installed app. The `_v2` suffix makes
+    // Android treat these as new channels and take the custom sound; the old
+    // ids are deleted below so the settings screen keeps one entry per topic.
+    private const val CHANNEL_ID_DAILY = "dolar_daily_rate_v2"
+    private const val CHANNEL_ID_NEXT = "dolar_next_rate_v2"
+    private const val CHANNEL_ID_USDT = "dolar_usdt_hourly_v2"
 
     private const val NOTIFICATION_ID_DAILY = 1001
     private const val NOTIFICATION_ID_NEXT = 1002
     private const val NOTIFICATION_ID_USDT = 1003
-    private const val CHANNEL_ID_ALERT = "dolar_price_alert"
+    private const val CHANNEL_ID_ALERT = "dolar_price_alert_v2"
     private const val NOTIFICATION_ID_ALERT = 1004
     private const val NOTIFICATION_ID_EURO = 1005
+
+    private val LEGACY_CHANNEL_IDS = listOf(
+        "dolar_daily_rate",
+        "dolar_next_rate",
+        "dolar_usdt_hourly",
+        "dolar_price_alert",
+    )
+
+    /**
+     * The bundled alert tone, shipped in `res/raw` so it is always available
+     * offline and survives the notification service reading it out of process.
+     */
+    private fun soundUri(context: Context): Uri =
+        Uri.parse("android.resource://${context.packageName}/${R.raw.dolita_notification}")
+
+    private fun soundAttributes(): AudioAttributes =
+        AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
 
     /**
      * Opens the app on the rate the notification is talking about.
@@ -55,6 +81,8 @@ object NotificationHelper {
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(NotificationManager::class.java)
+            val sound = soundUri(context)
+            val audioAttributes = soundAttributes()
 
             val dailyChannel = NotificationChannel(
                 CHANNEL_ID_DAILY,
@@ -62,6 +90,7 @@ object NotificationHelper {
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 description = "Notificación diaria con la tasa del dólar BCV"
+                setSound(sound, audioAttributes)
             }
 
             val nextChannel = NotificationChannel(
@@ -70,14 +99,18 @@ object NotificationHelper {
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Aviso cuando se publica la próxima tasa del dólar"
+                setSound(sound, audioAttributes)
             }
 
+            // IMPORTANCE_LOW makes no sound at all, so the hourly USDT channel
+            // has to be at least DEFAULT for the custom tone to play.
             val usdtChannel = NotificationChannel(
                 CHANNEL_ID_USDT,
                 "USDT cada hora",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 description = "Notificación horaria con el precio del USDT"
+                setSound(sound, audioAttributes)
             }
 
             val alertChannel = NotificationChannel(
@@ -86,7 +119,12 @@ object NotificationHelper {
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Aviso cuando una tasa cruza el valor que elegiste"
+                setSound(sound, audioAttributes)
             }
+
+            // Delete the pre-sound channels first: their sound is immutable and
+            // leaving them behind would show duplicate entries in the settings.
+            LEGACY_CHANNEL_IDS.forEach(manager::deleteNotificationChannel)
 
             manager.createNotificationChannel(dailyChannel)
             manager.createNotificationChannel(nextChannel)

@@ -736,6 +736,10 @@ private fun ThemeSelectionDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        // AMOLED turns every surface pure black, so the dialog needs the same
+        // hairline the cards use or it disappears into the scrim.
+        modifier = Modifier.border(1.dp, cardBorderColor(), RoundedCornerShape(28.dp)),
+        shape = RoundedCornerShape(28.dp),
         title = {
             Text(
                 text = "Seleccionar tema",
