@@ -261,52 +261,58 @@ data class DifferentialEnMonedas(
 }
 
 /**
- * What the parallel market charges OVER the official one, per currency, in
- * bolivares.
+ * The difference between the selected rate and each of the other quoted rates,
+ * in bolivares.
  *
- * Two DIFFERENT numbers, not one number translated. The dollar's gap and the
- * euro's gap are independent facts: the euro parallel is derived through the
- * dollar, so the euro carries its own spread. Expressing the dollar's gap in
- * euros, which an earlier version did, answered a question nobody asked and
- * buried the figure that was actually wanted.
+ * Every row is the arithmetic difference of two rates the card already shows:
+ * standing on the dollar, the euro row is EUR - USD, and standing on USDT, the
+ * euro row is EUR - USDT. It is not a parallel estimate derived through another
+ * market; that kind of derived number belongs to the gap line above, where it is
+ * named as such.
  *
- * Both are money the reader spends, so both are quoted in bolivares — the unit
- * the rate difference is decided in. Converting them into dollars or euros would
- * divide away the very spread being reported.
+ * The selected currency has no row against itself. A missing or unusable rate
+ * yields null for that currency rather than a zero, because "Bs 0,00" reads as
+ * "the rates are equal" and is the opposite of "this rate is unknown".
  */
 data class DiferenciasPorMoneda(
     val dolarBs: BigDecimal?,
-    val euroBs: BigDecimal?
+    val euroBs: BigDecimal?,
+    val usdtBs: BigDecimal?
 )
 
 /**
- * The overpayment per official currency, in bolivares.
+ * Compares every other quoted rate against [selectedFuente]'s rate.
  *
- * The dollar gap is the parallel USDT rate against the official dollar rate —
- * P2P trades dollars, so that is the spread that exists. The euro gap is the
- * euro's own: BCV quotes the official euro, the parallel euro is reached
- * through the dollar, and the difference between the two is a second, larger
- * number.
+ * The sign is `other - selected`: positive means the other currency is worth
+ * more bolivares per unit. The card shows the absolute value and uses the sign
+ * only to choose its colour.
  *
- * A missing rate yields null for that currency rather than a zero, because a
- * gap of "Bs 0,00" reads as "no premium exists" and is the opposite of "this
- * rate is unknown".
+ * An unusable selected rate yields no rows at all; an unusable other rate
+ * omits only that currency's row.
  */
 fun diferenciasPorMoneda(
-    usdRate: Double,
-    usdtRate: Double,
+    selectedFuente: String,
+    usdRate: Double?,
+    usdtRate: Double?,
     eurRate: Double?
 ): DiferenciasPorMoneda {
-    val dolar = if (usdRate > 0.0 && usdtRate > 0.0) {
-        BigDecimal.valueOf(usdtRate - usdRate).setScale(2, RoundingMode.HALF_UP)
-    } else {
-        null
+    val selectedRate = when (selectedFuente) {
+        "usd" -> usdRate
+        "usdt" -> usdtRate
+        "eur" -> eurRate
+        else -> null
+    }?.takeIf { it > 0.0 } ?: return DiferenciasPorMoneda(null, null, null)
+
+    fun difference(other: Double?): BigDecimal? {
+        val otherRate = other?.takeIf { it > 0.0 } ?: return null
+        return BigDecimal.valueOf(otherRate)
+            .subtract(BigDecimal.valueOf(selectedRate))
+            .setScale(2, RoundingMode.HALF_UP)
     }
-    val euro = if (eurRate != null && eurRate > 0.0 && usdRate > 0.0 && usdtRate > 0.0) {
-        val paralelo = (eurRate / usdRate) * usdtRate
-        BigDecimal.valueOf(paralelo - eurRate).setScale(2, RoundingMode.HALF_UP)
-    } else {
-        null
-    }
-    return DiferenciasPorMoneda(dolarBs = dolar, euroBs = euro)
+
+    return DiferenciasPorMoneda(
+        dolarBs = if (selectedFuente == "usd") null else difference(usdRate),
+        euroBs = if (selectedFuente == "eur") null else difference(eurRate),
+        usdtBs = if (selectedFuente == "usdt") null else difference(usdtRate)
+    )
 }

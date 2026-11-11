@@ -130,7 +130,7 @@ fun CalculatorCard(
             "usd" -> usdtRate?.let { AlternativeMarket("Al paralelo", it) }
             "usdt" -> usdRate?.let { AlternativeMarket("Al oficial", it) }
             "eur" -> if (usdRate != null && usdRate > 0.0 && usdtRate != null) {
-                AlternativeMarket("Al paralelo (vía dólar)", (eurRate!! / usdRate) * usdtRate)
+                AlternativeMarket("Al paralelo estimado (vía dólar)", (eurRate!! / usdRate) * usdtRate)
             } else {
                 null
             }
@@ -542,35 +542,22 @@ fun CalculatorCard(
                 }
             }
 
-            // How much the parallel charges OVER the official one, per currency,
-            // in bolivares. Two independent facts -- the dollar's spread and the
-            // euro's, which is a different and larger number because the euro
-            // parallel is reached through the dollar.
-            //
-            // The currency you are standing on is left out: its gap is already
-            // the line directly above, in the same card, and repeating it two
-            // lines lower would read as two separate prices rather than one
-            // price stated twice.
-            val otrasDiferencias = if (usdRate != null && usdtRate != null) {
-                com.example.erp.data.diferenciasPorMoneda(
-                    usdRate = usdRate,
-                    usdtRate = usdtRate,
-                    eurRate = eurRate
-                )
-            } else {
-                null
-            }
+            // Real pairwise differences, not a parallel estimate: each row is
+            // the selected rate against another quoted rate, so the same three
+            // rates answer the question from every tab. The selected currency
+            // is left out by the function itself.
+            val otrasDiferencias = com.example.erp.data.diferenciasPorMoneda(
+                selectedFuente = quote.fuente,
+                usdRate = usdRate,
+                usdtRate = usdtRate,
+                eurRate = eurRate
+            )
 
-            val filasDiferencia = otrasDiferencias?.let { d ->
-                buildList {
-                    d.dolarBs?.takeIf { quote.fuente != "usd" }?.let {
-                        add("Dólar" to it)
-                    }
-                    d.euroBs?.takeIf { quote.fuente != "eur" }?.let {
-                        add("Euro" to it)
-                    }
-                }
-            }.orEmpty()
+            val filasDiferencia = buildList {
+                otrasDiferencias.dolarBs?.let { add("Dólar" to it) }
+                otrasDiferencias.euroBs?.let { add("Euro" to it) }
+                otrasDiferencias.usdtBs?.let { add("USDT" to it) }
+            }
 
             if (filasDiferencia.isNotEmpty()) {
                 Spacer(Modifier.height(14.dp))
@@ -587,7 +574,7 @@ fun CalculatorCard(
                         DifferentialRow(
                             label = nombre,
                             value = "Bs ${CurrencyConverter.format(gap.abs())}",
-                            positive = gap.signum() > 0
+                            otherAbove = gap.signum() > 0
                         )
                     }
                 }
@@ -597,11 +584,11 @@ fun CalculatorCard(
 }
 
 /**
- * One currency's gap. The same shape for every row, so the reader compares the
- * numbers without comparing the formatting.
+ * One currency's difference. The same shape for every row, so the reader
+ * compares the numbers without comparing the formatting.
  */
 @Composable
-private fun DifferentialRow(label: String, value: String, positive: Boolean) {
+private fun DifferentialRow(label: String, value: String, otherAbove: Boolean) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -616,9 +603,10 @@ private fun DifferentialRow(label: String, value: String, positive: Boolean) {
             text = value,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Medium,
-            // A parallel rate under the official one would be a saving, and
-            // painting that red would be a lie.
-            color = if (positive) {
+            // Red when the other currency is worth more bolivares per unit,
+            // green when it is worth less. This row is a comparison, not a
+            // cost, so the colour only shows direction.
+            color = if (otherAbove) {
                 com.example.erp.ui.theme.DownRedLight
             } else {
                 positiveColor()

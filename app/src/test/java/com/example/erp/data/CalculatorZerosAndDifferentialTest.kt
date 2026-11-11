@@ -8,11 +8,13 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 
 /**
- * The differential in every currency, and the zero-key trap.
+ * The pairwise rate differences, the cambiario differential, and the zero-key
+ * trap.
  *
- * Both were asked for as one thing: a reader on the parallel tab with an amount
- * in bolivares needs to know what the purchase overpaid as money, not as a
- * percentage. A percentage cannot be spent.
+ * A reader comparing the quoted rates needs the real difference between them,
+ * not a parallel estimate: on the dollar tab the euro row is EUR - USD, and on
+ * the USDT tab it is EUR - USDT. The differential tests below cover the other
+ * question: what a purchase overpaid as money, not as a percentage.
  */
 class CalculatorZerosAndDifferentialTest {
 
@@ -91,52 +93,142 @@ class CalculatorZerosAndDifferentialTest {
     // --------------------------------------------------------- differential
 
     @Test
-    fun `the dollar gap is the parallel against the official, in bolivares`() {
-        val d = diferenciasPorMoneda(usdRate = usd, usdtRate = usdt, eurRate = eur)
-        // 1008,26 - 875,65 = 132,61
-        assertEquals(BigDecimal("132.61"), d.dolarBs)
+    fun `the dollar tab reports the real euro and usdt differences`() {
+        val d = diferenciasPorMoneda(
+            selectedFuente = "usd",
+            usdRate = usd,
+            usdtRate = usdt,
+            eurRate = eur
+        )
+        // 980,61 - 875,65 = 104,96, not the old synthetic 148,51.
+        assertEquals(BigDecimal("104.96"), d.euroBs)
+        // 1.008,26 - 875,65 = 132,61.
+        assertEquals(BigDecimal("132.61"), d.usdtBs)
+        assertNull(d.dolarBs)
     }
 
     @Test
-    fun `the euro gap is its own number, larger than the dollar's`() {
-        val d = diferenciasPorMoneda(usdRate = usd, usdtRate = usdt, eurRate = eur)
-        // The euro parallel is reached THROUGH the dollar: (980,61/875,65) *
-        // 1008,26 = 1.129,115330, so the euro gap is Bs 148,51 against the
-        // dollar's Bs 132,61. Reporting one figure for both would hide that
-        // euro is the wider one.
-        assertEquals(BigDecimal("148.51"), d.euroBs)
-        assertTrue(
-            "the euro spread should be its own, larger number",
-            d.euroBs!! > d.dolarBs!!
+    fun `the euro tab compares the official dollar against the selected euro`() {
+        val d = diferenciasPorMoneda(
+            selectedFuente = "eur",
+            usdRate = usd,
+            usdtRate = usdt,
+            eurRate = eur
         )
+        // 875,65 - 980,61 = -104,96; the card shows the absolute value.
+        assertEquals(BigDecimal("-104.96"), d.dolarBs)
+        // 1.008,26 - 980,61 = 27,65.
+        assertEquals(BigDecimal("27.65"), d.usdtBs)
+        assertNull(d.euroBs)
+    }
+
+    @Test
+    fun `the usdt tab compares both official rates against the selected usdt`() {
+        val d = diferenciasPorMoneda(
+            selectedFuente = "usdt",
+            usdRate = usd,
+            usdtRate = usdt,
+            eurRate = eur
+        )
+        // 875,65 - 1.008,26 = -132,61.
+        assertEquals(BigDecimal("-132.61"), d.dolarBs)
+        // 980,61 - 1.008,26 = -27,65, not the old synthetic 148,51.
+        assertEquals(BigDecimal("-27.65"), d.euroBs)
+        assertNull(d.usdtBs)
+    }
+
+    @Test
+    fun `live BCV rates report the real euro and euro-usdt differences`() {
+        // The rates the app showed on 09/11/2026: USD 897,5383,
+        // EUR 1.001,18602288 and USDT 1.041,0683.
+        val liveUsd = 897.5383
+        val liveEur = 1001.18602288
+        val liveUsdt = 1041.0683
+
+        val fromUsd = diferenciasPorMoneda(
+            selectedFuente = "usd",
+            usdRate = liveUsd,
+            usdtRate = liveUsdt,
+            eurRate = liveEur
+        )
+        // EUR - USD = 103,65, the number the reader expects.
+        assertEquals(BigDecimal("103.65"), fromUsd.euroBs)
+        // USDT - USD = 143,53.
+        assertEquals(BigDecimal("143.53"), fromUsd.usdtBs)
+
+        val fromUsdt = diferenciasPorMoneda(
+            selectedFuente = "usdt",
+            usdRate = liveUsd,
+            usdtRate = liveUsdt,
+            eurRate = liveEur
+        )
+        // EUR - USDT = -39,88, not the old synthetic 160,10.
+        assertEquals(BigDecimal("-39.88"), fromUsdt.euroBs)
+        assertEquals(BigDecimal("-143.53"), fromUsdt.dolarBs)
     }
 
     @Test
     fun `a missing rate yields no figure rather than a gap of zero`() {
-        // "Bs 0,00" reads as "no premium exists", which is the opposite of
-        // "this rate is unknown".
-        val d = diferenciasPorMoneda(usdRate = usd, usdtRate = usdt, eurRate = null)
+        val d = diferenciasPorMoneda(
+            selectedFuente = "usd",
+            usdRate = usd,
+            usdtRate = usdt,
+            eurRate = null
+        )
         assertNull(d.euroBs)
-        assertEquals(BigDecimal("132.61"), d.dolarBs)
+        assertEquals(BigDecimal("132.61"), d.usdtBs)
+        assertNull(d.dolarBs)
     }
 
     @Test
-    fun `an unusable rate yields nothing instead of a negative premium`() {
-        assertNull(diferenciasPorMoneda(0.0, usdt, eur).dolarBs)
-        assertNull(diferenciasPorMoneda(usd, 0.0, eur).dolarBs)
-        assertNull(diferenciasPorMoneda(0.0, usdt, eur).euroBs)
+    fun `an unusable selected rate yields nothing at all`() {
+        val d = diferenciasPorMoneda(
+            selectedFuente = "usd",
+            usdRate = 0.0,
+            usdtRate = usdt,
+            eurRate = eur
+        )
+        assertNull(d.dolarBs)
+        assertNull(d.euroBs)
+        assertNull(d.usdtBs)
     }
 
     @Test
-    fun `identical rates mean no premium on either currency`() {
-        val d = diferenciasPorMoneda(usdRate = usd, usdtRate = usd, eurRate = eur)
-        assertEquals(BigDecimal("0.00"), d.dolarBs)
+    fun `an unusable other rate yields no row for that currency`() {
+        val d = diferenciasPorMoneda(
+            selectedFuente = "usd",
+            usdRate = usd,
+            usdtRate = 0.0,
+            eurRate = eur
+        )
+        assertEquals(BigDecimal("104.96"), d.euroBs)
+        assertNull(d.usdtBs)
+    }
+
+    @Test
+    fun `identical rates mean no difference`() {
+        val d = diferenciasPorMoneda(
+            selectedFuente = "usd",
+            usdRate = usd,
+            usdtRate = usd,
+            eurRate = usd
+        )
         assertEquals(BigDecimal("0.00"), d.euroBs)
+        assertEquals(BigDecimal("0.00"), d.usdtBs)
     }
 
     @Test
-    fun `a parallel below the official is reported as a negative, not a fabricated zero`() {
-        val d = diferenciasPorMoneda(usdRate = usd, usdtRate = 800.0, eurRate = eur)
-        assertTrue("a parallel under the official is a saving", d.dolarBs!! < BigDecimal.ZERO)
+    fun `a rate below the selected one is reported as a negative, not a fabricated zero`() {
+        val d = diferenciasPorMoneda(
+            selectedFuente = "usd",
+            usdRate = usd,
+            usdtRate = 800.0,
+            eurRate = eur
+        )
+        assertEquals(BigDecimal("-75.65"), d.usdtBs)
+        assertTrue(
+            "a rate under the selected one is a negative difference",
+            d.usdtBs!! < BigDecimal.ZERO
+        )
     }
 }
