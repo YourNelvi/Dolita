@@ -1,6 +1,5 @@
 package com.example.erp.ui
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
@@ -10,12 +9,11 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +31,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -70,6 +70,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -78,6 +81,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
@@ -89,6 +95,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.erp.BuildConfig
+import com.example.erp.data.ApkDownloadResult
+import com.example.erp.data.ApkDownloader
+import com.example.erp.data.ApkInstallResult
+import com.example.erp.data.ApkInstaller
+import com.example.erp.data.AvailableUpdate
 import com.example.erp.data.DolarQuote
 import com.example.erp.data.Error as AppError
 import com.example.erp.data.HISTORICO_PUNTOS
@@ -96,15 +108,23 @@ import com.example.erp.data.RateSample
 import com.example.erp.data.ShareCard
 import com.example.erp.data.ShareImage
 import com.example.erp.data.ThemeMode
+import com.example.erp.data.UpdateCheckResult
+import com.example.erp.data.UpdateChecker
+import com.example.erp.data.parseSha256Digest
+import com.example.erp.data.updateApkFileName
 import com.example.erp.ui.components.CalculatorCard
 import com.example.erp.ui.components.Emphasized
 import com.example.erp.ui.components.Entrance
 import com.example.erp.ui.components.EvolutionChart
+import com.example.erp.ui.components.InstallPermissionDialog
 import com.example.erp.ui.components.MotionDurations
 import com.example.erp.ui.components.PulseDot
 import com.example.erp.ui.components.ShimmerBox
 import com.example.erp.ui.components.SettingsScreen
 import com.example.erp.ui.components.TickerNumber
+import com.example.erp.ui.components.UpdateDialog
+import com.example.erp.ui.components.UpdateDownloadState
+import com.example.erp.ui.components.openExternal
 import com.example.erp.ui.theme.AppTheme
 import com.example.erp.ui.theme.DownRedLight
 import com.example.erp.ui.theme.ERPTheme
@@ -116,6 +136,12 @@ import com.example.erp.ui.theme.cardBorder
 import com.example.erp.ui.theme.cardBorderColor
 import com.example.erp.ui.theme.cardContainerColor
 import com.example.erp.ui.theme.isDarkTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.NumberFormat
@@ -128,6 +154,7 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import android.os.Build
+import android.widget.Toast
 
 private val priceFormatter = NumberFormat.getNumberInstance(Locale.getDefault()).apply {
     minimumFractionDigits = 2
@@ -170,6 +197,47 @@ private data class CalculatorAmounts(
     val divisaDigits: String = ""
 )
 
+/**
+ * Keeps the update notice alive across a rotation.
+ *
+ * The launch check marks its timestamp before the dialog is shown, so a
+ * configuration change that dropped this state would hide the notice until the
+ * next day. The changelog is a few hundred characters; saved instance state is
+ * the right place for it.
+ *
+ * Optional fields travel as empty values instead of nulls: every entry has to
+ * be something the saved-state bundle can carry.
+ */
+private val availableUpdateSaver = listSaver<AvailableUpdate?, Any?>(
+    save = { update ->
+        if (update == null) {
+            emptyList()
+        } else {
+            listOf(
+                update.versionName,
+                update.releaseNotes,
+                update.releaseUrl,
+                update.apkSizeBytes ?: 0L,
+                update.apkUrl.orEmpty(),
+                update.apkDigest.orEmpty(),
+                update.apkName.orEmpty()
+            )
+        }
+    },
+    restore = { values ->
+        if (values.size != 7) return@listSaver null
+        AvailableUpdate(
+            versionName = values[0] as? String ?: return@listSaver null,
+            releaseNotes = values[1] as? String ?: return@listSaver null,
+            releaseUrl = values[2] as? String ?: return@listSaver null,
+            apkSizeBytes = (values[3] as? Long)?.takeIf { it > 0L },
+            apkUrl = (values[4] as? String)?.takeIf { it.isNotEmpty() },
+            apkDigest = (values[5] as? String)?.takeIf { it.isNotEmpty() },
+            apkName = (values[6] as? String)?.takeIf { it.isNotEmpty() }
+        )
+    }
+)
+
 @Composable
 fun DolarScreen(
     viewModel: DolarViewModel = viewModel(),
@@ -178,6 +246,157 @@ fun DolarScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showSettings by rememberSaveable { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val inPreview = LocalInspectionMode.current
+    val updateChecker = remember(context, inPreview) {
+        if (inPreview) null else UpdateChecker(context.applicationContext)
+    }
+    val apkDownloader = remember(context, inPreview) {
+        if (inPreview) null else ApkDownloader(context.applicationContext)
+    }
+    var availableUpdate by rememberSaveable(stateSaver = availableUpdateSaver) {
+        mutableStateOf<AvailableUpdate?>(null)
+    }
+    var checkingUpdate by remember { mutableStateOf(false) }
+    var downloadState by remember { mutableStateOf<UpdateDownloadState>(UpdateDownloadState.Idle) }
+    var downloadJob by remember { mutableStateOf<Job?>(null) }
+    var showInstallPermission by rememberSaveable { mutableStateOf(false) }
+    // Blank means "no verified APK is waiting for the installer". A path
+    // survives rotation; a File does not.
+    var pendingInstallPath by rememberSaveable { mutableStateOf("") }
+
+    fun checkForUpdates(force: Boolean) {
+        val checker = updateChecker ?: return
+        if (checkingUpdate) return
+
+        scope.launch {
+            checkingUpdate = true
+            val result = checker.check(force)
+            checkingUpdate = false
+
+            when (result) {
+                is UpdateCheckResult.Available -> {
+                    // A new answer invalidates whatever the previous one left
+                    // behind: an APK for 1.30.0 must never be offered for 1.31.0.
+                    downloadState = UpdateDownloadState.Idle
+                    pendingInstallPath = ""
+                    apkDownloader?.clearPending()
+                    availableUpdate = result.update
+                }
+
+                UpdateCheckResult.UpToDate -> if (force) {
+                    Toast.makeText(
+                        context,
+                        "Ya tenés la última versión (${BuildConfig.VERSION_NAME}).",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+
+                is UpdateCheckResult.Failed -> if (force) {
+                    Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                }
+
+                UpdateCheckResult.Skipped -> Unit
+            }
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        downloadJob?.cancel()
+        downloadState = UpdateDownloadState.Idle
+        pendingInstallPath = ""
+        apkDownloader?.clearPending()
+        availableUpdate = null
+    }
+
+    fun installDownloaded(file: File) {
+        when (val result = ApkInstaller.install(context, file)) {
+            ApkInstallResult.Started -> {
+                // The system installer owns the screen from here. The APK stays
+                // on disk because it is the file the installer was handed.
+                pendingInstallPath = ""
+                downloadState = UpdateDownloadState.Idle
+                availableUpdate = null
+            }
+
+            ApkInstallResult.NeedsPermission -> {
+                pendingInstallPath = file.absolutePath
+                showInstallPermission = true
+            }
+
+            is ApkInstallResult.Failed -> {
+                downloadState = UpdateDownloadState.Failed(result.message)
+            }
+        }
+    }
+
+    fun startDownload(update: AvailableUpdate) {
+        val url = update.apkUrl ?: return
+        val digest = parseSha256Digest(update.apkDigest) ?: return
+        val downloader = apkDownloader ?: return
+
+        downloadJob?.cancel()
+        downloadJob = scope.launch {
+            try {
+                downloadState = UpdateDownloadState.Downloading(
+                    bytesRead = 0L,
+                    totalBytes = update.apkSizeBytes ?: 0L
+                )
+
+                val result = downloader.download(
+                    url = url,
+                    expectedSha256 = digest,
+                    fileName = updateApkFileName(update.versionName),
+                    onProgress = { bytesRead, totalBytes ->
+                        // The downloader reports from its IO dispatcher; state
+                        // belongs to the main thread.
+                        withContext(Dispatchers.Main.immediate) {
+                            downloadState = UpdateDownloadState.Downloading(bytesRead, totalBytes)
+                        }
+                    }
+                )
+
+                when (result) {
+                    is ApkDownloadResult.Success -> installDownloaded(result.file)
+
+                    is ApkDownloadResult.Failure ->
+                        downloadState = UpdateDownloadState.Failed(result.message)
+                }
+            } finally {
+                // A cancelled download must not leave the dialog claiming that
+                // it is still running.
+                if (!isActive) downloadState = UpdateDownloadState.Idle
+            }
+        }
+    }
+
+    fun requestDownload(update: AvailableUpdate) {
+        if (!ApkInstaller.canInstall(context)) {
+            // Ask before spending 48 MB: downloading first and failing at the
+            // installer would waste the user's data for nothing.
+            downloadState = UpdateDownloadState.Idle
+            showInstallPermission = true
+            return
+        }
+        startDownload(update)
+    }
+
+    // One silent check per day, at launch. The checker persists its last
+    // successful timestamp, so rotations and quick restarts cost no request.
+    LaunchedEffect(Unit) {
+        if (!inPreview) checkForUpdates(force = false)
+    }
+
+    // A previous install may have left the downloaded APK behind. It is only
+    // useful until the installer has read it, and 48 MB of it should never
+    // outlive the update it was downloaded for.
+    LaunchedEffect(Unit) {
+        if (!inPreview) {
+            withContext(Dispatchers.IO) { apkDownloader?.clearPending() }
+        }
+    }
 
     // A tapped notification names the rate it was about. Honour it once and
     // report back, so a recomposition does not keep steering the user.
@@ -237,7 +456,69 @@ fun DolarScreen(
                 onHighPrecisionChange = { viewModel.setHighPrecisionEnabled(it) },
                 onAmoledBlackChange = { viewModel.setAmoledBlackEnabled(it) },
                 isDynamicColorAvailable = Build.VERSION.SDK_INT >= 31,
-                onBack = { showSettings = false }
+                onBack = { showSettings = false },
+                onCheckForUpdates = { checkForUpdates(force = true) },
+                checkingUpdate = checkingUpdate
+            )
+        }
+
+        availableUpdate?.let { update ->
+            UpdateDialog(
+                update = update,
+                installedVersion = BuildConfig.VERSION_NAME,
+                downloadState = downloadState,
+                onDownload = { requestDownload(update) },
+                onCancelDownload = { downloadJob?.cancel() },
+                onOpenRelease = {
+                    downloadJob?.cancel()
+                    if (openExternal(context, update.releaseUrl)) {
+                        downloadState = UpdateDownloadState.Idle
+                        availableUpdate = null
+                    } else {
+                        Toast.makeText(
+                            context,
+                            "No se pudo abrir el navegador.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                },
+                onDismiss = { dismissUpdateDialog() }
+            )
+        }
+
+        if (showInstallPermission) {
+            InstallPermissionDialog(
+                onOpenSettings = {
+                    if (!ApkInstaller.openInstallPermissionSettings(context)) {
+                        Toast.makeText(
+                            context,
+                            "No se pudieron abrir los ajustes de permisos.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                },
+                onRetry = {
+                    if (!ApkInstaller.canInstall(context)) {
+                        Toast.makeText(
+                            context,
+                            "Todavía falta habilitar «Instalar apps desconocidas».",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } else {
+                        showInstallPermission = false
+                        val pending = pendingInstallPath
+                            .takeIf { it.isNotBlank() }
+                            ?.let(::File)
+                            ?.takeIf { it.isFile }
+
+                        if (pending != null) {
+                            installDownloaded(pending)
+                        } else {
+                            availableUpdate?.let(::requestDownload)
+                        }
+                    }
+                },
+                onDismiss = { showInstallPermission = false }
             )
         }
     }
@@ -630,6 +911,37 @@ private fun DolarContent(
 ) {
     val selected = uiState.quotes.firstOrNull { it.fuente == uiState.selectedFuente }
         ?: uiState.quotes.firstOrNull()
+    val selectedIndex = uiState.quotes.indexOfFirst { it.fuente == selected?.fuente }
+    val officialUsdRate = uiState.quotes.firstOrNull { it.fuente == "usd" }?.promedio
+
+    // The hero rate is a horizontal carousel. Swiping it moves between the
+    // available casas; the chip selector below stays in sync through the same
+    // onSelectCasa callback used by the taps.
+    val pagerState = rememberPagerState(
+        initialPage = selectedIndex.coerceAtLeast(0),
+        pageCount = { uiState.quotes.size.coerceAtLeast(1) }
+    )
+
+    LaunchedEffect(selectedIndex, uiState.quotes.size) {
+        if (selectedIndex >= 0 && pagerState.currentPage != selectedIndex) {
+            pagerState.animateScrollToPage(selectedIndex)
+        }
+    }
+
+    // Only a settled page changes the selected casa. Comparing against the
+    // displayed quote avoids switching sources when the selected one is missing
+    // (for example, USDT unavailable while the BCV quotes still load).
+    LaunchedEffect(pagerState.settledPage) {
+        // A programmatic scroll is already moving toward the selected source;
+        // ignore intermediate settles so a chip tap cannot be reverted by the
+        // page it happens to pass through.
+        if (pagerState.targetPage == selectedIndex) return@LaunchedEffect
+
+        val pageQuote = uiState.quotes.getOrNull(pagerState.settledPage) ?: return@LaunchedEffect
+        if (pageQuote.fuente != selected?.fuente) {
+            onSelectCasa(pageQuote.fuente)
+        }
+    }
 
     // The calculator's two amount fields, lifted out of the card so the share
     // control can report exactly what is on screen. Empty until the card
@@ -637,10 +949,28 @@ private fun DolarContent(
     // message about nothing.
     var calculatorAmounts by remember { mutableStateOf(CalculatorAmounts()) }
 
+    fun selectRelativeRate(delta: Int) {
+        if (uiState.quotes.size < 2) return
+        val current = uiState.quotes.indexOfFirst { it.fuente == selected?.fuente }
+            .let { if (it >= 0) it else 0 }
+        val target = (current + delta).coerceIn(0, uiState.quotes.lastIndex)
+        if (target != current) {
+            onSelectCasa(uiState.quotes[target].fuente)
+        }
+    }
+
     // The launch sequence lives here, on the container: one reveal for the whole
     // board, 60ms behind the top bar. Animating individual items would replay
     // every time they re-enter the viewport.
     Entrance(index = 1) {
+    // The hero pager owns its own swipe. This wrapper extends the same gesture
+    // to the calculator and every section below it, so the whole board responds
+    // to a horizontal swipe instead of only the top card.
+    RateSwipeBox(
+        enabled = uiState.quotes.size > 1,
+        onSwipeLeft = { selectRelativeRate(1) },
+        onSwipeRight = { selectRelativeRate(-1) }
+    ) {
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
@@ -653,32 +983,23 @@ private fun DolarContent(
         }
 
         item {
-            // Switching casa crossfades the board instead of hard-swapping it.
             // No Entrance() here on purpose: per-item entrance animations
             // re-run every time an item scrolls back into view, which reads as
             // the list sticking under your thumb.
-            AnimatedContent(
-                targetState = selected,
-                // contentKey on the SOURCE, not on the quote object: a rate
-                // refresh hands us a brand new DolarQuote every time, and
-                // re-running the crossfade on each of those made the whole page
-                // shift under the reader. Only a real source switch animates.
-                contentKey = { it?.fuente },
-                transitionSpec = {
-                    (fadeIn(
-                        animationSpec = tween(MotionDurations.BASE, easing = Emphasized)
-                    ) + slideInVertically(
-                        animationSpec = tween(MotionDurations.BASE, easing = Emphasized)
-                    ) { it / 10 })
-                        .togetherWith(fadeOut(animationSpec = tween(MotionDurations.FAST)))
-                },
-                label = "heroSwap"
-            ) { quote ->
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxWidth(),
+                pageSpacing = 12.dp,
+                userScrollEnabled = uiState.quotes.size > 1
+            ) { page ->
+                val quote = uiState.quotes.getOrNull(page)
                 FeaturedCard(
                     quote = quote,
                     highPrecision = highPrecision,
-                    futureQuote = uiState.futureQuote,
-                    officialUsdRate = uiState.quotes.firstOrNull { it.fuente == "usd" }?.promedio
+                    // The future rate belongs to the currently selected source,
+                    // not to whichever adjacent page is being previewed.
+                    futureQuote = if (quote?.fuente == selected?.fuente) uiState.futureQuote else null,
+                    officialUsdRate = officialUsdRate
                 )
             }
         }
@@ -781,6 +1102,53 @@ private fun DolarContent(
                 )
         }
     }
+    }
+    }
+}
+
+/**
+ * Adds a horizontal fling-to-change-casa gesture around a section. The callback
+ * references are kept current so a rate refresh does not restart the pointer
+ * input in the middle of a drag.
+ */
+@Composable
+private fun RateSwipeBox(
+    enabled: Boolean,
+    onSwipeLeft: () -> Unit,
+    onSwipeRight: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val currentOnSwipeLeft = rememberUpdatedState(onSwipeLeft)
+    val currentOnSwipeRight = rememberUpdatedState(onSwipeRight)
+
+    Box(
+        modifier = if (enabled) {
+            Modifier.pointerInput(enabled) {
+                val threshold = 72.dp.toPx()
+                var totalDrag = 0f
+
+                detectHorizontalDragGestures(
+                    onDragStart = { totalDrag = 0f },
+                    onDragCancel = { totalDrag = 0f },
+                    onDragEnd = {
+                        if (abs(totalDrag) >= threshold) {
+                            if (totalDrag < 0) {
+                                currentOnSwipeLeft.value()
+                            } else {
+                                currentOnSwipeRight.value()
+                            }
+                        }
+                        totalDrag = 0f
+                    }
+                ) { _, dragAmount ->
+                    totalDrag += dragAmount
+                }
+            }
+        } else {
+            Modifier
+        }
+    ) {
+        content()
     }
 }
 

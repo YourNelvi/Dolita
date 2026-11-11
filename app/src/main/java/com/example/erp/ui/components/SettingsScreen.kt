@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,12 +25,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -61,6 +65,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import com.example.erp.R
 import com.example.erp.data.ThemeMode
+import com.example.erp.data.UpdateCheckInterval
+import com.example.erp.data.UpdatePreferences
 import com.example.erp.ui.versionLabel
 import com.example.erp.ui.theme.AppTheme
 import com.example.erp.ui.theme.accentColor
@@ -85,18 +91,18 @@ object AppLinks {
  *
  * Guarded: a device with no browser, or one where the handler is missing,
  * throws rather than crashing. A dead link must not take the settings sheet
- * down with it.
+ * down with it. Returns whether an activity was actually launched.
  */
-private fun openExternal(context: android.content.Context, url: String) {
-    if (url.isBlank()) return
-    runCatching {
+internal fun openExternal(context: android.content.Context, url: String): Boolean {
+    if (url.isBlank()) return false
+    return runCatching {
         context.startActivity(
             android.content.Intent(
                 android.content.Intent.ACTION_VIEW,
                 android.net.Uri.parse(url)
             )
         )
-    }
+    }.isSuccess
 }
 
 /**
@@ -205,6 +211,8 @@ fun SettingsScreen(
     onAmoledBlackChange: (Boolean) -> Unit,
     isDynamicColorAvailable: Boolean,
     onBack: () -> Unit,
+    onCheckForUpdates: () -> Unit = {},
+    checkingUpdate: Boolean = false,
     focusSection: SettingsSection? = null
 ) {
     BackHandler(onBack = onBack)
@@ -248,6 +256,8 @@ fun SettingsScreen(
             onHighPrecisionChange = onHighPrecisionChange,
             onAmoledBlackChange = onAmoledBlackChange,
             isDynamicColorAvailable = isDynamicColorAvailable,
+            onCheckForUpdates = onCheckForUpdates,
+            checkingUpdate = checkingUpdate,
             focusSection = focusSection,
             modifier = Modifier.padding(innerPadding)
         )
@@ -268,6 +278,8 @@ fun SettingsContent(
     onHighPrecisionChange: (Boolean) -> Unit,
     onAmoledBlackChange: (Boolean) -> Unit,
     isDynamicColorAvailable: Boolean,
+    onCheckForUpdates: () -> Unit = {},
+    checkingUpdate: Boolean = false,
     focusSection: SettingsSection? = null,
     modifier: Modifier = Modifier
 ) {
@@ -278,6 +290,13 @@ fun SettingsContent(
 
     var showThemeDialog by remember { mutableStateOf(false) }
     val alertsRequester = remember { BringIntoViewRequester() }
+
+    // The update schedule is stored the same way every other preference is:
+    // directly in Settings, read back by the checker when it is due to run.
+    val context = LocalContext.current
+    val updatePreferences = remember(context) { UpdatePreferences(context) }
+    var currentUpdateInterval by remember { mutableStateOf(updatePreferences.interval) }
+    var showUpdateIntervalDialog by remember { mutableStateOf(false) }
 
     // A notification about a price alert lands here with ALERTAS, so the reader
     // does not have to hunt for the section it is talking about.
@@ -564,11 +583,91 @@ fun SettingsContent(
 
         SocialLinksSection()
 
+        Spacer(modifier = Modifier.height(24.dp))
+        androidx.compose.material3.HorizontalDivider(
+            color = cardBorderColor()
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = "ACTUALIZACIONES",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // The interval only governs the check an app launch runs on its own.
+        // The button below always runs, whatever is chosen here.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .clickable { showUpdateIntervalDialog = true }
+                .padding(vertical = 10.dp, horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Buscar actualizaciones",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = currentUpdateInterval.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = currentUpdateInterval.label,
+                style = MaterialTheme.typography.labelLarge,
+                color = accentColor(),
+                modifier = Modifier.padding(start = 12.dp)
+            )
+        }
+
+        TextButton(
+            onClick = onCheckForUpdates,
+            enabled = !checkingUpdate,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (checkingUpdate) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Rounded.SystemUpdate,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = if (checkingUpdate) "Buscando actualización…" else "Buscar actualización",
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        androidx.compose.material3.HorizontalDivider(
+            color = cardBorderColor()
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = "ACERCA DE",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
         // Build identity at the very bottom. It is the first thing a bug report
-        // needs and the last thing a reader wants to scroll past, so it sits
-        // under the links rather than in a section of its own.
+        // needs and the last thing a reader wants to scroll past.
         versionLabel(com.example.erp.BuildConfig.VERSION_NAME)?.let { label ->
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
@@ -588,6 +687,18 @@ fun SettingsContent(
                 showThemeDialog = false
             },
             onDismiss = { showThemeDialog = false }
+        )
+    }
+
+    if (showUpdateIntervalDialog) {
+        UpdateIntervalDialog(
+            current = currentUpdateInterval,
+            onSelect = { interval ->
+                updatePreferences.interval = interval
+                currentUpdateInterval = interval
+                showUpdateIntervalDialog = false
+            },
+            onDismiss = { showUpdateIntervalDialog = false }
         )
     }
 }
@@ -748,6 +859,13 @@ private fun ThemeSelectionDialog(
         },
         text = {
             Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // The list can be taller than a small phone's dialog. A
+                    // bounded, scrollable column keeps every theme reachable
+                    // without stretching the dialog past the screen.
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 AppTheme.entries.forEach { theme ->
@@ -805,6 +923,82 @@ private fun ThemeSelectionDialog(
                                 // Active-state indicator -> accent.
                                 tint = accentColor(),
                                 modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cerrar")
+            }
+        }
+    )
+}
+
+/**
+ * The automatic update schedule.
+ *
+ * One option per row, each with what it actually means: "Cada semana" alone
+ * does not tell a reader whether a manual check still works, and it does.
+ */
+@Composable
+private fun UpdateIntervalDialog(
+    current: UpdateCheckInterval,
+    onSelect: (UpdateCheckInterval) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.border(1.dp, cardBorderColor(), RoundedCornerShape(28.dp)),
+        shape = RoundedCornerShape(28.dp),
+        title = {
+            Text(
+                text = "Buscar actualizaciones",
+                fontWeight = FontWeight.SemiBold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                UpdateCheckInterval.entries.forEach { interval ->
+                    val isSelected = current == interval
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                color = if (isSelected) MaterialTheme.colorScheme.surfaceVariant
+                                else Color.Transparent
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (isSelected) MaterialTheme.colorScheme.outline
+                                else cardBorderColor(),
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                            .clickable { onSelect(interval) }
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // The row owns the gesture; a radio that also handled
+                        // it would fire twice for one tap.
+                        RadioButton(selected = isSelected, onClick = null)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = interval.label,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = interval.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }

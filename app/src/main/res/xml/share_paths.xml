@@ -8,4 +8,11 @@
       without the app having to ask.
     -->
     <cache-path name="shared_cards" path="share/" />
+
+    <!--
+      The downloaded update lives in files, not cache: the user confirms the
+      install in the system installer, and the system reclaiming cache mid-way
+      would leave the installer reading a file that no longer exists.
+    -->
+    <files-path name="updates" path="updates/" />
 </paths>
