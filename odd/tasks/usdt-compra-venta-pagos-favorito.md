@@ -346,6 +346,16 @@ Reglas:
     recorta solo (`ContentScale.Crop`), sin recorte manual. APK final
     49.563.286 bytes, SHA-256
     `e0c60715a446d436c63777fe5c2a0c07645b98992a9287c14795ae99f2823143`.
+- [x] T16 — Release 1.31.1 publicado (S9, S10): versión 1019016 / "1.31.1",
+  tag `v1.31.1` sobre el commit de bump, APK adjunto y `digest` publicado.
+  - Evidencia: la firma del APK es idéntica a la de la 1.31.0 (certificado
+    SHA-256 `2c460f11…efe7c`), así que se instala encima sin desinstalar. El
+    release publicado expone `tag_name`, el asset `Dolita-1.31.1.apk` y
+    `digest: sha256:ea977e91…22bb945b47`, que es lo que la app necesita para
+    habilitar la descarga desde el diálogo. Verificado además en un teléfono
+    ajeno: la actualización se descargó y se instaló desde la app.
+  - Commits: `7ab691c` (feat) + `5ff564c` (chore: bump version to 1.31.1),
+    tag `v1.31.1` sobre `5ff564c`, rama `stabilize-release-readiness` pusheada.
 
 ## Log
 
@@ -630,3 +640,41 @@ Evidencia:
   chat no queda guardada ni en disco ni en el almacenamiento de la sesión, así
   que hace falta el archivo original para ponerla.
 - Sin commit, sin push y sin bump de versión.
+
+### L9 — Release 1.31.1 publicado (2026-11-12)
+
+Pedido del usuario:
+
+> "ok ahora cambia la version de la aplicacion por la 1.31.1 y en los ajustes
+> tambien y sube el release si todo esta bien para que los demas ya actualicen"
+
+> "pero cambia en el codigo la version de la aplicacion tambien"
+
+Publicación:
+
+- `versionCode` 1019015 → 1019016 y `versionName` "1.31.0" → "1.31.1" en
+  `app/build.gradle.kts`, el único lugar donde se escribe la versión. Ajustes
+  la lee de `BuildConfig.VERSION_NAME`, así que "en los ajustes también"
+  sale solo.
+- Los previews del diálogo de actualización se dejaron en 1.31.1 para que
+  siguan mostrando una actualización coherente y no la versión instalada.
+- Commits: `7ab691c` con todo el trabajo de la feature y `5ff564c` con el
+  bump, siguiendo la convención del repo (el tag va sobre el commit de bump).
+- Tag `v1.31.1` sobre `5ff564c`, rama `stabilize-release-readiness` pusheada.
+- Release "Dolita 1.31.1" con el APK adjunto como `Dolita-1.31.1.apk`.
+
+Verificación:
+
+- La firma del APK es la misma que la de la 1.31.0 (certificado SHA-256
+  `2c460f11…efe7c`): se instala encima sin desinstalar ni perder datos.
+- El release publicado expone `tag_name`, asset y `digest`
+  (`sha256:ea977e91…22bb945b47`), que es exactamente lo que el actualizador
+  necesita para habilitar la descarga dentro de la app.
+- Probado en un teléfono ajeno: la actualización se descargó y se instaló
+  desde el propio diálogo.
+- Suite unitaria 427 tests, 0 fallos.
+- APK final 49.563.286 bytes, SHA-256
+  `ea977e91e997afbac6a233de6f963e00ee74f9fa4c23ed94e332af22bb945b47`.
+- El avatar real quedó en `app/src/main/res/drawable/creator_avatar.png`
+  (copia de `Escritorio/Nueva carpeta/imagen del perfil.png`).
+
