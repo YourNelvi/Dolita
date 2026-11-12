@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.ERP" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.ERP" parent="android:Theme.Material.Light.NoActionBar">
+        <!--
+            The startup window is what the system paints before the first
+            Compose frame, so it decides what the user sees while the process
+            starts. It points at the same surface the app uses, which is what
+            lets the system splash hand over to the opening animation without
+            a white flash in between. The night variant of the color carries
+            the dark surface.
+        -->
+        <item name="android:windowBackground">@color/splash_background</item>
+    </style>
 </resources>

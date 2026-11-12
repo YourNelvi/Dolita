@@ -13,6 +13,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
@@ -25,6 +26,7 @@ import com.example.erp.notification.NotificationHelper
 import com.example.erp.ui.DolarScreen
 import com.example.erp.ui.DolarViewModel
 import com.example.erp.ui.DolarViewModelFactory
+import com.example.erp.data.CreatorPromptStore
 import com.example.erp.data.ThemeMode
 import com.example.erp.ui.theme.AppTheme
 import com.example.erp.ui.theme.ERPTheme
@@ -37,6 +39,19 @@ private const val KEY_PERMISSION_REQUESTED = "post_notifications_requested"
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        /**
+         * True until the first activity of this process is created.
+         *
+         * `savedInstanceState` cannot answer "is this an app open": when the
+         * user relaunches an app that was killed, Android restores the task's
+         * saved state, so a genuine cold start often arrives with a non-null
+         * bundle and would be mistaken for a rotation. The process itself is
+         * the honest signal: a rotation reuses it, a real launch creates it.
+         */
+        private var firstActivityOfProcess = true
+    }
+
     /**
      * Rate the notification the user tapped was about, handed to the screen once.
      *
@@ -45,6 +60,12 @@ class MainActivity : ComponentActivity() {
      * so a recomposition does not steer the user back on every frame.
      */
     private var requestedRateSource by mutableStateOf<String?>(null)
+
+    /**
+     * How many times the app has come to the foreground today, counting this
+     * one. The creator invitation rides on the second opening of the day.
+     */
+    private var creatorOpenNumber by mutableIntStateOf(0)
 
     /**
      * Registered as a property initializer, so the registration happens while the activity is
@@ -66,6 +87,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Consumed before any composable runs: the first activity of a fresh
+        // process is an app open and earns the opening animation; every later
+        // creation in the same process is a rotation or a restore.
+        val isAppOpen = firstActivityOfProcess
+        firstActivityOfProcess = false
 
         // Order matters. Channels are created first: a runtime grant for channels that do not
         // exist yet is a grant the user never sees the effect of. createChannels() is idempotent,
@@ -108,9 +135,28 @@ class MainActivity : ComponentActivity() {
                 DolarScreen(
                     viewModel = viewModel,
                     requestedSource = requestedRateSource,
-                    onSourceRequestHandled = { requestedRateSource = null }
+                    onSourceRequestHandled = { requestedRateSource = null },
+                    // Only a genuine app open earns the opening animation: a
+                    // rotation or a restored task does not.
+                    isColdStart = isAppOpen,
+                    creatorOpenNumber = creatorOpenNumber
                 )
             }
+        }
+    }
+
+    /**
+     * Counts an opening of the app.
+     *
+     * Every time the activity comes to the foreground is an opening: the
+     * reader brought the app back on purpose. A rotation is not one — the
+     * same screen is still on top, and counting it would make the invitation
+     * arrive out of nowhere while the user rotates the phone.
+     */
+    override fun onStart() {
+        super.onStart()
+        if (!isChangingConfigurations) {
+            creatorOpenNumber = CreatorPromptStore(this).noteOpen()
         }
     }
 

@@ -2,6 +2,7 @@ package com.example.erp.ui
 
 import com.example.erp.data.CurrencyConverter
 import com.example.erp.data.DolarQuote
+import com.example.erp.data.PaymentProfile
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.ZoneId
@@ -42,6 +43,8 @@ object CalculatorShareText {
      * @param highPrecision same digit rule the screen renders the rate with:
      *   four decimals when the user asked for them, two otherwise.
      * @param nowMillis injectable so the "when this was sent" line is testable.
+     * @param payment the profile to attach as a payment block, or null to send
+     *   the calculation alone. The block never touches the amounts or the date.
      * @return the text to share, or **null** when there is nothing worth
      *   sending: no rate, or nothing typed at all. A message that carries a
      *   rate and two blank amounts teaches the reader nothing, so the caller
@@ -54,8 +57,34 @@ object CalculatorShareText {
         highPrecision: Boolean,
         zoneId: ZoneId = ZoneId.systemDefault(),
         locale: Locale = Locale.getDefault(),
-        nowMillis: Long = System.currentTimeMillis()
-    ): String? {
+        nowMillis: Long = System.currentTimeMillis(),
+        payment: PaymentProfile? = null
+    ): String? = content(
+        quote = quote,
+        bolivaresDigits = bolivaresDigits,
+        divisaDigits = divisaDigits,
+        highPrecision = highPrecision,
+        zoneId = zoneId,
+        locale = locale,
+        nowMillis = nowMillis,
+        payment = payment
+    )?.toText()
+
+    /**
+     * The same payload as structured content, so the caption and the card are
+     * built from one place. The null rules are exactly [build]'s: no rate, or
+     * no typed amount, means there is nothing to send.
+     */
+    fun content(
+        quote: DolarQuote?,
+        bolivaresDigits: String,
+        divisaDigits: String,
+        highPrecision: Boolean,
+        zoneId: ZoneId = ZoneId.systemDefault(),
+        locale: Locale = Locale.getDefault(),
+        nowMillis: Long = System.currentTimeMillis(),
+        payment: PaymentProfile? = null
+    ): ShareContent? {
         if (quote == null) return null
 
         // An empty field is "the user has not typed that yet", which is not the
@@ -80,12 +109,15 @@ object CalculatorShareText {
             divisa?.let { add("$currency $it") }
         }.joinToString(" = ")
 
-        return buildString {
-            appendLine(quote.nombre)
-            appendLine(conversion)
-            appendLine("1 $currency = Bs ${priceFormat.format(quote.promedio)}")
-            append("Tasa del ${RateShareText.quoteDay(quote.fechaActualizacion)} · ${timeFormat.format(sentAt)}")
-        }
+        return ShareContent(
+            title = quote.nombre,
+            body = listOf(
+                conversion,
+                "1 $currency = Bs ${priceFormat.format(quote.promedio)}"
+            ),
+            payment = payment?.shareLines().orEmpty(),
+            footnote = "Tasa del ${RateShareText.quoteDay(quote.fechaActualizacion)} · ${timeFormat.format(sentAt)}"
+        )
     }
 
     /**

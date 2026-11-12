@@ -15,6 +15,9 @@
 local.properties
 # Local AI runtime state
 .atl/
+# Local memory cache and code-graph tooling state
+.engram/
+.cgcignore
 # Release keystore (never commit)
 *.jks
 *.keystore

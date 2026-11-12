@@ -236,15 +236,15 @@ private fun UpdateDialogPreview() {
     ERPTheme {
         UpdateDialog(
             update = AvailableUpdate(
-                versionName = "1.31.0",
+                versionName = "1.31.1",
                 releaseNotes = "Qué cambia\n\nCalculadora\n\n- Agrega algo.\n- Corrige un detalle.",
                 releaseUrl = "https://github.com/YourNelvi/Dolita/releases/latest",
                 apkSizeBytes = 48_669_750L,
-                apkUrl = "https://github.com/YourNelvi/Dolita/releases/download/v1.31.0/Dolita-1.31.0.apk",
+                apkUrl = "https://github.com/YourNelvi/Dolita/releases/download/v1.31.1/Dolita-1.31.1.apk",
                 apkDigest = PREVIEW_SHA256,
-                apkName = "Dolita-1.31.0.apk"
+                apkName = "Dolita-1.31.1.apk"
             ),
-            installedVersion = "1.30.0",
+            installedVersion = "1.31.0",
             downloadState = UpdateDownloadState.Idle,
             onDownload = {},
             onCancelDownload = {},
@@ -260,15 +260,15 @@ private fun UpdateDialogDownloadingPreview() {
     ERPTheme {
         UpdateDialog(
             update = AvailableUpdate(
-                versionName = "1.31.0",
+                versionName = "1.31.1",
                 releaseNotes = "Qué cambia\n\nCalculadora\n\n- Agrega algo.",
                 releaseUrl = "https://github.com/YourNelvi/Dolita/releases/latest",
                 apkSizeBytes = 48_669_750L,
-                apkUrl = "https://github.com/YourNelvi/Dolita/releases/download/v1.31.0/Dolita-1.31.0.apk",
+                apkUrl = "https://github.com/YourNelvi/Dolita/releases/download/v1.31.1/Dolita-1.31.1.apk",
                 apkDigest = PREVIEW_SHA256,
-                apkName = "Dolita-1.31.0.apk"
+                apkName = "Dolita-1.31.1.apk"
             ),
-            installedVersion = "1.30.0",
+            installedVersion = "1.31.0",
             downloadState = UpdateDownloadState.Downloading(
                 bytesRead = 24_334_875L,
                 totalBytes = 48_669_750L

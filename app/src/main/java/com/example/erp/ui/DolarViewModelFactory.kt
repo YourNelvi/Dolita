@@ -8,6 +8,7 @@ import com.example.erp.data.CachedDolarRepository
 import com.example.erp.data.DolarRepository
 import com.example.erp.data.FileHistoryStore
 import com.example.erp.data.RateHistoryStore
+import com.example.erp.data.SourcePreferences
 import com.example.erp.data.ThemePreferencesImpl
 import com.example.erp.data.ThemeRepository
 import com.example.erp.data.ThemeRepositoryImpl
@@ -25,7 +26,8 @@ class DolarViewModelFactory(
     private val application: Application,
     private val repository: DolarRepository? = null,
     private val historyStore: RateHistoryStore? = null,
-    private val themeRepository: ThemeRepository? = null
+    private val themeRepository: ThemeRepository? = null,
+    private val sourcePreferences: SourcePreferences? = null
 ) : ViewModelProvider.Factory {
 
     @Suppress("UNCHECKED_CAST")
@@ -35,7 +37,8 @@ class DolarViewModelFactory(
                 application = application,
                 repository = repository ?: CachedDolarRepository(ApiDolarRepository(), application),
                 historyStore = historyStore ?: FileHistoryStore(FileHistoryStore.defaultDir(application)),
-                themeRepository = themeRepository ?: ThemeRepositoryImpl(ThemePreferencesImpl(application))
+                themeRepository = themeRepository ?: ThemeRepositoryImpl(ThemePreferencesImpl(application)),
+                sourcePreferences = sourcePreferences ?: SourcePreferences(application)
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

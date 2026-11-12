@@ -1,6 +1,7 @@
 package com.example.erp.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -75,6 +76,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,7 +85,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
@@ -101,11 +105,13 @@ import com.example.erp.data.ApkDownloader
 import com.example.erp.data.ApkInstallResult
 import com.example.erp.data.ApkInstaller
 import com.example.erp.data.AvailableUpdate
+import com.example.erp.data.CreatorPromptStore
 import com.example.erp.data.DolarQuote
 import com.example.erp.data.Error as AppError
 import com.example.erp.data.HISTORICO_PUNTOS
+import com.example.erp.data.PaymentProfile
+import com.example.erp.data.PaymentProfileStore
 import com.example.erp.data.RateSample
-import com.example.erp.data.ShareCard
 import com.example.erp.data.ShareImage
 import com.example.erp.data.ThemeMode
 import com.example.erp.data.UpdateCheckResult
@@ -113,18 +119,26 @@ import com.example.erp.data.UpdateChecker
 import com.example.erp.data.parseSha256Digest
 import com.example.erp.data.updateApkFileName
 import com.example.erp.ui.components.CalculatorCard
+import com.example.erp.ui.components.CreatorDialog
+import com.example.erp.ui.components.CreatorFooter
 import com.example.erp.ui.components.Emphasized
 import com.example.erp.ui.components.Entrance
 import com.example.erp.ui.components.EvolutionChart
 import com.example.erp.ui.components.InstallPermissionDialog
 import com.example.erp.ui.components.MotionDurations
+import com.example.erp.ui.components.OpeningScreen
+import com.example.erp.ui.components.PaymentProfilesScreen
+import com.example.erp.ui.components.PaymentProfilePickerDialog
 import com.example.erp.ui.components.PulseDot
 import com.example.erp.ui.components.ShimmerBox
 import com.example.erp.ui.components.SettingsScreen
 import com.example.erp.ui.components.TickerNumber
 import com.example.erp.ui.components.UpdateDialog
 import com.example.erp.ui.components.UpdateDownloadState
+import com.example.erp.ui.components.UsdtCountdownCard
+import com.example.erp.ui.components.UsdtRatesCard
 import com.example.erp.ui.components.openExternal
+import com.example.erp.ui.components.openingVisible
 import com.example.erp.ui.theme.AppTheme
 import com.example.erp.ui.theme.DownRedLight
 import com.example.erp.ui.theme.ERPTheme
@@ -138,6 +152,8 @@ import com.example.erp.ui.theme.cardContainerColor
 import com.example.erp.ui.theme.isDarkTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -242,14 +258,121 @@ private val availableUpdateSaver = listSaver<AvailableUpdate?, Any?>(
 fun DolarScreen(
     viewModel: DolarViewModel = viewModel(),
     requestedSource: String? = null,
-    onSourceRequestHandled: () -> Unit = {}
+    onSourceRequestHandled: () -> Unit = {},
+    /**
+     * True when this composition is the app being opened, not a recreation.
+     *
+     * The cached rate is painted before the first frame reaches the screen, so
+     * asking the state "are you still loading?" would skip the opening
+     * animation exactly when the user is watching the system splash. The
+     * activity owns this answer: a rotation or a restored task is not an app
+     * open.
+     */
+    isColdStart: Boolean = true,
+    /**
+     * How many times the app has been opened today, counting this one. The
+     * creator invitation shows on the second one.
+     */
+    creatorOpenNumber: Int = 0
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val favoriteSource by viewModel.favoriteSource.collectAsState()
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showPaymentProfiles by rememberSaveable { mutableStateOf(false) }
+
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    // The calculator stays composed underneath these overlays, so a focused
+    // amount field keeps its IME connection and the keyboard floats over
+    // Settings. Drop focus and hide the keyboard before the overlay takes over.
+    fun openSettings() {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+        showSettings = true
+    }
+
+    fun openPaymentProfiles() {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+        showPaymentProfiles = true
+    }
 
     val context = LocalContext.current
+    val paymentProfileStore = remember(context) { PaymentProfileStore(context) }
+    var paymentProfiles by remember { mutableStateOf(paymentProfileStore.load()) }
+
+    fun savePaymentProfile(profile: PaymentProfile) {
+        val next = if (paymentProfiles.any { it.id == profile.id }) {
+            paymentProfiles.map { if (it.id == profile.id) profile else it }
+        } else {
+            paymentProfiles + profile
+        }
+        paymentProfiles = next
+        paymentProfileStore.save(next)
+    }
+
+    fun deletePaymentProfile(id: String) {
+        val next = paymentProfiles.filterNot { it.id == id }
+        paymentProfiles = next
+        paymentProfileStore.save(next)
+    }
+
     val scope = rememberCoroutineScope()
     val inPreview = LocalInspectionMode.current
+
+    // The opening curtain belongs to the app being opened, not to the data
+    // being slow: the cached rate is painted before the first frame, so the
+    // state would say "loaded" while the user is still looking at the system
+    // splash. `remember` without keys is intentional: it freezes the answer
+    // from the first frame.
+    val coldStart = remember { isColdStart && !inPreview }
+    var openingMinElapsed by remember { mutableStateOf(!coldStart) }
+    var openingMaxElapsed by remember { mutableStateOf(!coldStart) }
+    LaunchedEffect(coldStart) {
+        if (!coldStart) return@LaunchedEffect
+        delay(MotionDurations.OPENING_MIN.toLong())
+        openingMinElapsed = true
+        delay((MotionDurations.OPENING_MAX - MotionDurations.OPENING_MIN).toLong())
+        openingMaxElapsed = true
+    }
+    val showOpening = openingVisible(
+        coldStart = coldStart,
+        loading = uiState.loading,
+        hasQuotes = uiState.quotes.isNotEmpty(),
+        minElapsed = openingMinElapsed,
+        maxElapsed = openingMaxElapsed
+    )
+
+    // The creator invitation. The reader asks for it from the footer, and the
+    // app may offer it on its own: at most once a day, and only after the app
+    // has been used for more than one day. The dice are rolled once per app
+    // open, never per recomposition.
+    val creatorPromptStore = remember(context) { CreatorPromptStore(context) }
+    var showCreatorDialog by rememberSaveable { mutableStateOf(false) }
+
+    fun openCreatorInfo() {
+        showCreatorDialog = true
+        // Opening it by hand burns the day too: the invitation must not come
+        // back on its own later the same day.
+        creatorPromptStore.markShownToday()
+    }
+
+    // The invitation shows on the FIRST opening of the day and not again
+    // until the next one. The key is the opening counter: it changes on
+    // every opening, which is what makes this effect re-check the rule.
+    LaunchedEffect(creatorOpenNumber) {
+        if (inPreview) return@LaunchedEffect
+        if (!creatorPromptStore.shouldShowNow()) return@LaunchedEffect
+        // Wait for the opening curtain to be gone: the invitation and the
+        // brand moment must not fight for the same frame. The state is read
+        // INSIDE the flow: reading a captured boolean would never observe the
+        // change and the invitation would wait forever.
+        snapshotFlow { openingMinElapsed || openingMaxElapsed }.first { it }
+        delay(500)
+        showCreatorDialog = true
+        creatorPromptStore.markShownToday()
+    }
     val updateChecker = remember(context, inPreview) {
         if (inPreview) null else UpdateChecker(context.applicationContext)
     }
@@ -418,7 +541,10 @@ fun DolarScreen(
             onRefresh = { viewModel.load(force = true) },
             onToggleFutureRate = viewModel::toggleFutureRate,
             onToggleSelectedDateRate = viewModel::toggleSelectedDateRate,
-            onOpenSettings = { showSettings = true },
+            onOpenSettings = { openSettings() },
+            paymentProfiles = paymentProfiles,
+            onOpenPaymentProfiles = { openPaymentProfiles() },
+            onOpenCreatorInfo = { openCreatorInfo() },
             viewModel = viewModel
         )
 
@@ -442,6 +568,10 @@ fun DolarScreen(
             val currentMode by viewModel.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
             val currentDynamicColor by viewModel.dynamicColorEnabled.collectAsState(initial = false)
             val currentHighPrecision by viewModel.highPrecisionEnabled.collectAsState(initial = false)
+            val currentCalculatorSuggestions by
+                viewModel.calculatorSuggestionsEnabled.collectAsState(initial = true)
+            val currentShareAsImage by
+                viewModel.shareAsImageEnabled.collectAsState(initial = true)
             val currentAmoledBlack by viewModel.amoledBlackEnabled.collectAsState(initial = false)
 
             SettingsScreen(
@@ -449,16 +579,47 @@ fun DolarScreen(
                 currentMode = currentMode,
                 currentDynamicColor = currentDynamicColor,
                 currentHighPrecision = currentHighPrecision,
+                currentCalculatorSuggestions = currentCalculatorSuggestions,
                 currentAmoledBlack = currentAmoledBlack,
                 onThemeChange = { viewModel.setTheme(it) },
                 onModeChange = { viewModel.setThemeMode(it) },
                 onDynamicColorChange = { viewModel.setDynamicColorEnabled(it) },
                 onHighPrecisionChange = { viewModel.setHighPrecisionEnabled(it) },
+                onCalculatorSuggestionsChange = { viewModel.setCalculatorSuggestionsEnabled(it) },
                 onAmoledBlackChange = { viewModel.setAmoledBlackEnabled(it) },
                 isDynamicColorAvailable = Build.VERSION.SDK_INT >= 31,
                 onBack = { showSettings = false },
                 onCheckForUpdates = { checkForUpdates(force = true) },
-                checkingUpdate = checkingUpdate
+                checkingUpdate = checkingUpdate,
+                paymentProfileCount = paymentProfiles.size,
+                onOpenPaymentProfiles = { openPaymentProfiles() },
+                currentFavoriteSource = favoriteSource,
+                onFavoriteSourceChange = viewModel::setFavoriteSource,
+                currentShareAsImage = currentShareAsImage,
+                onShareAsImageChange = { viewModel.setShareAsImageEnabled(it) }
+            )
+        }
+
+        // Payment profiles cover Settings like Settings covers the rate screen.
+        // Composed last so its BackHandler is the one Back reaches first.
+        AnimatedVisibility(
+            visible = showPaymentProfiles,
+            enter = fadeIn(animationSpec = tween(MotionDurations.BASE, easing = Emphasized)) +
+                slideInHorizontally(
+                    animationSpec = tween(MotionDurations.SLOW, easing = Emphasized),
+                    initialOffsetX = { it }
+                ),
+            exit = fadeOut(animationSpec = tween(MotionDurations.FAST)) +
+                slideOutHorizontally(
+                    animationSpec = tween(MotionDurations.BASE, easing = Emphasized),
+                    targetOffsetX = { it }
+                )
+        ) {
+            PaymentProfilesScreen(
+                profiles = paymentProfiles,
+                onSave = { savePaymentProfile(it) },
+                onDelete = { deletePaymentProfile(it) },
+                onBack = { showPaymentProfiles = false }
             )
         }
 
@@ -521,6 +682,25 @@ fun DolarScreen(
                 onDismiss = { showInstallPermission = false }
             )
         }
+
+        // Last child: the cold-start curtain covers every other surface while
+        // the process is still resolving its first rate. It never outlives the
+        // cap, so a slow network falls back to the skeleton underneath.
+        AnimatedVisibility(
+            visible = showOpening,
+            enter = EnterTransition.None,
+            exit = fadeOut(animationSpec = tween(MotionDurations.SLOW, easing = Emphasized)),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            OpeningScreen(modifier = Modifier.fillMaxSize())
+        }
+
+        // A dialog lives in its own window, so it does not compete with the
+        // curtain for the z-order: it simply opens on top of whatever is
+        // showing.
+        if (showCreatorDialog) {
+            CreatorDialog(onDismiss = { showCreatorDialog = false })
+        }
     }
 }
 
@@ -533,9 +713,16 @@ fun DolarScreenContent(
     onToggleFutureRate: () -> Unit,
     onToggleSelectedDateRate: () -> Unit = {},
     onOpenSettings: () -> Unit,
-    viewModel: DolarViewModel
+    viewModel: DolarViewModel,
+    paymentProfiles: List<PaymentProfile> = emptyList(),
+    onOpenPaymentProfiles: () -> Unit = {},
+    onOpenCreatorInfo: () -> Unit = {}
 ) {
     val currentHighPrecision by viewModel.highPrecisionEnabled.collectAsState(initial = false)
+    val calculatorSuggestionsEnabled by
+        viewModel.calculatorSuggestionsEnabled.collectAsState(initial = true)
+    val shareAsImageEnabled by
+        viewModel.shareAsImageEnabled.collectAsState(initial = true)
     // The refresh glyph completes one turn per fetch and parks there — a spin
     // that keeps turning forever pretends to be working.
     val refreshTurn by animateFloatAsState(
@@ -619,6 +806,11 @@ fun DolarScreenContent(
                     onToggleSelectedDateRate = onToggleSelectedDateRate,
                     viewModel = viewModel,
                     highPrecision = currentHighPrecision,
+                    calculatorSuggestionsEnabled = calculatorSuggestionsEnabled,
+                    shareAsImageEnabled = shareAsImageEnabled,
+                    paymentProfiles = paymentProfiles,
+                    onOpenPaymentProfiles = onOpenPaymentProfiles,
+                    onOpenCreatorInfo = onOpenCreatorInfo,
                     modifier = contentModifier
                 )
             }
@@ -790,35 +982,30 @@ private fun ShareIconButton(
 }
 
 /**
- * Share a rate as a card plus its caption.
+ * The share affordance for a rate.
  *
- * The card is what makes the number read as the day's rate instead of a line of
- * chat; the caption is what keeps the number selectable, because the reader
- * still wants to paste it into a calculator. `ShareImage` owns that decision and
- * falls back to text alone when the card cannot be drawn.
+ * It only forwards the tap: the screen builds the payload, so the payment
+ * profile choice can slot in between the tap and [ShareImage]. The card is what
+ * makes the number read as the day's rate instead of a line of chat; the
+ * caption is what keeps the number selectable, because the reader still wants
+ * to paste it into a calculator.
  */
 @Composable
 private fun ShareRateAction(
-    quote: DolarQuote?,
-    highPrecision: Boolean = false,
+    contentDescription: String,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
     ShareIconButton(
-        onShare = {
-            val text = RateShareText.build(
-                quote = quote,
-                highPrecision = highPrecision
-            ) ?: return@ShareIconButton
-            ShareImage.share(context, ShareCard.fromText(text), text, "Compartir tasa")
-        },
-        contentDescription = "Compartir ${quote?.nombre ?: "la tasa"}",
+        onShare = onClick,
+        contentDescription = contentDescription,
         modifier = modifier
     )
 }
 
 /**
- * Share what the calculator produced, not just the rate it converted with.
+ * The share affordance for what the calculator produced, not just the rate it
+ * converted with.
  *
  * Both amounts travel, because a rate on its own is already shareable from the
  * hero and this control exists for the RESULT the user typed. The day comes
@@ -827,22 +1014,11 @@ private fun ShareRateAction(
  */
 @Composable
 private fun ShareCalculatorResultAction(
-    quote: DolarQuote?,
-    amounts: CalculatorAmounts,
-    highPrecision: Boolean,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
     ShareIconButton(
-        onShare = {
-            val text = CalculatorShareText.build(
-                quote = quote,
-                bolivaresDigits = amounts.bolivaresDigits,
-                divisaDigits = amounts.divisaDigits,
-                highPrecision = highPrecision
-            ) ?: return@ShareIconButton
-            ShareImage.share(context, ShareCard.fromText(text), text, "Compartir cálculo")
-        },
+        onShare = onClick,
         contentDescription = "Compartir el cálculo",
         modifier = modifier
     )
@@ -899,6 +1075,22 @@ private fun StaleBanner(
     }
 }
 
+/**
+ * What a share tap is about, held until the payment-profile choice resolves.
+ *
+ * The request carries the exact numbers the old click handler read at tap time,
+ * so a refresh under the dialog cannot change what gets shared.
+ */
+private sealed interface ShareRequest {
+    data class Rate(val quote: DolarQuote) : ShareRequest
+
+    data class Calculation(
+        val quote: DolarQuote,
+        val amounts: CalculatorAmounts,
+        val highPrecision: Boolean
+    ) : ShareRequest
+}
+
 @Composable
 private fun DolarContent(
     uiState: DolarUiState,
@@ -907,6 +1099,11 @@ private fun DolarContent(
     onToggleSelectedDateRate: () -> Unit,
     viewModel: DolarViewModel,
     highPrecision: Boolean,
+    calculatorSuggestionsEnabled: Boolean = true,
+    shareAsImageEnabled: Boolean = true,
+    paymentProfiles: List<PaymentProfile> = emptyList(),
+    onOpenPaymentProfiles: () -> Unit = {},
+    onOpenCreatorInfo: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val selected = uiState.quotes.firstOrNull { it.fuente == uiState.selectedFuente }
@@ -948,6 +1145,50 @@ private fun DolarContent(
     // publishes them, which also makes an early share a no-op rather than a
     // message about nothing.
     var calculatorAmounts by remember { mutableStateOf(CalculatorAmounts()) }
+
+    // Sharing is a two-step decision only when the user keeps payment profiles:
+    // the tap names WHAT to share, and the dialog decides whether a payment
+    // block rides along. With no saved profiles the tap shares immediately.
+    val context = LocalContext.current
+    var pendingShare by remember { mutableStateOf<ShareRequest?>(null) }
+
+    fun share(request: ShareRequest, payment: PaymentProfile?) {
+        val chooserTitle = when (request) {
+            is ShareRequest.Rate -> "Compartir tasa"
+            is ShareRequest.Calculation -> "Compartir cálculo"
+        }
+        val content = when (request) {
+            is ShareRequest.Rate -> RateShareText.content(
+                quote = request.quote,
+                highPrecision = highPrecision,
+                payment = payment
+            )
+
+            is ShareRequest.Calculation -> CalculatorShareText.content(
+                quote = request.quote,
+                bolivaresDigits = request.amounts.bolivaresDigits,
+                divisaDigits = request.amounts.divisaDigits,
+                highPrecision = request.highPrecision,
+                payment = payment
+            )
+        } ?: return
+
+        ShareImage.share(
+            context = context,
+            card = content.toCard(),
+            caption = content.toText(),
+            chooserTitle = chooserTitle,
+            asImage = shareAsImageEnabled
+        )
+    }
+
+    fun requestShare(request: ShareRequest) {
+        if (paymentProfiles.isEmpty()) {
+            share(request, null)
+        } else {
+            pendingShare = request
+        }
+    }
 
     fun selectRelativeRate(delta: Int) {
         if (uiState.quotes.size < 2) return
@@ -999,7 +1240,8 @@ private fun DolarContent(
                     // The future rate belongs to the currently selected source,
                     // not to whichever adjacent page is being previewed.
                     futureQuote = if (quote?.fuente == selected?.fuente) uiState.futureQuote else null,
-                    officialUsdRate = officialUsdRate
+                    officialUsdRate = officialUsdRate,
+                    onShareRate = { requestShare(ShareRequest.Rate(it)) }
                 )
             }
         }
@@ -1010,6 +1252,19 @@ private fun DolarContent(
                 selectedCasa = uiState.selectedFuente,
                 onSelect = onSelectCasa
             )
+        }
+
+        // The countdown belongs to the parallel market only: BCV publishes on
+        // its own schedule and has no hourly worker to count down to.
+        if (selected?.fuente == "usdt") {
+            item {
+                UsdtCountdownCard(
+                    lastFetch = selected.fechaActualizacion,
+                    refreshing = uiState.usdtRefreshing,
+                    error = uiState.usdtRefreshError,
+                    onRefresh = viewModel::refreshUsdt
+                )
+            }
         }
 
         // The two alternative rates live together right above the section they
@@ -1038,6 +1293,19 @@ private fun DolarContent(
             dateSource = uiState.calcRateSource
         )
 
+        // The USDT buy/sell choice applies ONLY to today's rate: a historical
+        // or next-day sample has no sides, and the hero/history keep the
+        // canonical average. The derived quote exists for the calculator and
+        // its share alone.
+        val calcQuoteForUsdt = if (
+            calcQuote?.fuente == "usdt" &&
+            uiState.calcRateSource == CalculatorRateSource.TODAY
+        ) {
+            calcQuote.conTasaUsdt(uiState.usdtRateMode)
+        } else {
+            calcQuote
+        }
+
         // Title left, action right, on one line. A share button parked above the
         // card left a column of empty space between the two, which read as a
         // layout slip rather than as two things on the same row.
@@ -1048,23 +1316,46 @@ private fun DolarContent(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 SectionHeader("Calculadora")
-                if (calcQuote != null) {
+                if (calcQuoteForUsdt != null) {
                     ShareCalculatorResultAction(
-                        quote = calcQuote,
-                        amounts = calculatorAmounts,
-                        highPrecision = highPrecision
+                        onClick = {
+                            // The USDT-specific quote, not the canonical
+                            // average: the reader must receive the same side of
+                            // the Compra/Venta/Promedio choice the calculator
+                            // is showing.
+                            requestShare(
+                                ShareRequest.Calculation(
+                                    quote = calcQuoteForUsdt,
+                                    amounts = calculatorAmounts,
+                                    highPrecision = highPrecision
+                                )
+                            )
+                        }
                     )
                 }
             }
         }
         item {
-            calcQuote?.let { quote ->
+            calcQuoteForUsdt?.let { quote ->
                 CalculatorCard(
                     quote = quote,
                     quotes = uiState.quotes,
+                    suggestionsEnabled = calculatorSuggestionsEnabled,
                     onAmountsChanged = { bolivares, divisa ->
                         calculatorAmounts = CalculatorAmounts(bolivares, divisa)
                     }
+                )
+            }
+        }
+
+        // Just below the calculator it re-prices: the rates and the control
+        // that chooses between them belong to the same decision.
+        if (selected?.fuente == "usdt" && uiState.calcRateSource == CalculatorRateSource.TODAY) {
+            item {
+                UsdtRatesCard(
+                    quote = selected,
+                    selected = uiState.usdtRateMode,
+                    onSelect = viewModel::setUsdtRateMode
                 )
             }
         }
@@ -1086,7 +1377,8 @@ private fun DolarContent(
                 quote = quote,
                 selected = quote.fuente == uiState.selectedFuente,
                 highPrecision = highPrecision,
-                onClick = { onSelectCasa(quote.fuente) }
+                onClick = { onSelectCasa(quote.fuente) },
+                onShareRate = { requestShare(ShareRequest.Rate(it)) }
             )
         }
 
@@ -1101,8 +1393,33 @@ private fun DolarContent(
                         .padding(vertical = 8.dp)
                 )
         }
+
+        // The last thing on the board: who made it, and the door to the
+        // invitation. It sits after the prices note because it is a sign-off,
+        // not part of the rates.
+        item {
+            CreatorFooter(onOpenCreatorInfo = onOpenCreatorInfo)
+        }
     }
     }
+    }
+
+    // The picker is the second half of a share tap. Choosing a profile shares
+    // exactly what the tap named; dismissing shares nothing, which is the only
+    // safe default for data the client did not ask for.
+    pendingShare?.let { request ->
+        PaymentProfilePickerDialog(
+            profiles = paymentProfiles,
+            onSelect = { profile ->
+                pendingShare = null
+                share(request, profile)
+            },
+            onDismiss = { pendingShare = null },
+            onAddProfile = {
+                pendingShare = null
+                onOpenPaymentProfiles()
+            }
+        )
     }
 }
 
@@ -1157,7 +1474,8 @@ private fun FeaturedCard(
     quote: DolarQuote?,
     highPrecision: Boolean = false,
     futureQuote: DolarQuote? = null,
-    officialUsdRate: Double? = null
+    officialUsdRate: Double? = null,
+    onShareRate: (DolarQuote) -> Unit = {}
 ) {
     if (quote == null) return
     val shape = RoundedCornerShape(20.dp)
@@ -1310,7 +1628,10 @@ private fun FeaturedCard(
             // The share affordance sits directly under the number it shares:
             // on the hero card the rate is the subject, so the control belongs
             // with the number, not out in a corner competing with the chrome.
-            ShareRateAction(quote = quote, highPrecision = highPrecision)
+            ShareRateAction(
+                contentDescription = "Compartir ${quote.nombre}",
+                onClick = { onShareRate(quote) }
+            )
         }
     }
 }
@@ -2031,7 +2352,8 @@ private fun QuoteRow(
     quote: DolarQuote,
     selected: Boolean,
     highPrecision: Boolean = false,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onShareRate: (DolarQuote) -> Unit = {}
 ) {
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -2079,7 +2401,10 @@ private fun QuoteRow(
             Spacer(Modifier.width(10.dp))
             // Nested inside the row's own click: the child consumes the tap, so
             // sharing never reads as a source switch.
-            ShareRateAction(quote = quote, highPrecision = highPrecision)
+            ShareRateAction(
+                contentDescription = "Compartir ${quote.nombre}",
+                onClick = { onShareRate(quote) }
+            )
         }
     }
 }

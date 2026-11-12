@@ -64,6 +64,24 @@ class ShareCardTest {
     }
 
     @Test
+    fun `a payment band rides between the figure and the date`() {
+        val card = ShareCard(
+            title = "Dólar (BCV)",
+            body = listOf("Bs 887,30"),
+            footnote = "Tasa del 27/10/2026 · 10:24",
+            payment = listOf("Pago móvil · Banesco", "Ana Pérez · 0414-1234567", "V-12345678")
+        )
+
+        assertEquals("Dólar (BCV)", card.title)
+        assertEquals(listOf("Bs 887,30"), card.body)
+        assertEquals("Tasa del 27/10/2026 · 10:24", card.footnote)
+        assertEquals(
+            listOf("Pago móvil · Banesco", "Ana Pérez · 0414-1234567", "V-12345678"),
+            card.payment
+        )
+    }
+
+    @Test
     fun `a payload with no figure between title and day is not a card`() {
         // Two lines is a name and a date with nothing to share. Drawing it would
         // hand the reader an empty plate, so the caller falls back to text.

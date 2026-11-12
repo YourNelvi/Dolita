@@ -51,6 +51,14 @@ class DolarViewModelTest {
         override suspend fun setThemeMode(mode: ThemeMode) {}
         override val dynamicColorEnabled = flowOf(false)
         override suspend fun setDynamicColorEnabled(enabled: Boolean) {}
+        override val highPrecisionEnabled = flowOf(false)
+        override suspend fun setHighPrecisionEnabled(enabled: Boolean) {}
+        override val calculatorSuggestionsEnabled = flowOf(true)
+        override suspend fun setCalculatorSuggestionsEnabled(enabled: Boolean) {}
+        override val shareAsImageEnabled = flowOf(true)
+        override suspend fun setShareAsImageEnabled(enabled: Boolean) {}
+        override val amoledBlackEnabled = flowOf(false)
+        override suspend fun setAmoledBlackEnabled(enabled: Boolean) {}
     }
 
     @Before

@@ -12,7 +12,13 @@ package com.example.erp.data
 data class ShareCard(
     val title: String,
     val body: List<String>,
-    val footnote: String
+    val footnote: String,
+    /**
+     * Optional payment details, drawn as a band of their own between the figure
+     * and the footnote. Kept out of [body] so the renderer can set them smaller
+     * than the figure instead of letting account numbers compete with the rate.
+     */
+    val payment: List<String> = emptyList()
 ) {
     companion object {
         /**

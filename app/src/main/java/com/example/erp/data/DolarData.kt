@@ -10,7 +10,17 @@ data class DolarQuote(
     val anterior: Double? = null,
     val variacion: Double? = null,
     val fechaActualizacion: String,
-    val fechaAnterior: String? = null
+    val fechaAnterior: String? = null,
+    /**
+     * Parallel market only: the average of the offers you BUY USDT from.
+     * Null for BCV and for an older cached USDT quote.
+     */
+    val compra: Double? = null,
+    /**
+     * Parallel market only: the average of the offers you SELL USDT to.
+     * Null for BCV and for an older cached USDT quote.
+     */
+    val venta: Double? = null
 )
 
 data class RateSample(
@@ -24,4 +34,14 @@ data class RateSample(
 
 interface DolarRepository {
     suspend fun getQuotes(): List<DolarQuote>
+
+    /**
+     * Refreshes ONLY the parallel-market quote.
+     *
+     * The hourly card has its own button; making that button re-fetch BCV
+     * would spend a request on a rate that cannot have moved and could fail on
+     * the official endpoint while the USDT refresh was fine. The default keeps
+     * test fakes and alternative repositories source-compatible.
+     */
+    suspend fun refreshUsdt(): DolarQuote? = null
 }

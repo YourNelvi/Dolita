@@ -18,6 +18,12 @@ interface ThemeRepository {
     val highPrecisionEnabled: Flow<Boolean>
     suspend fun setHighPrecisionEnabled(enabled: Boolean)
 
+    val calculatorSuggestionsEnabled: Flow<Boolean>
+    suspend fun setCalculatorSuggestionsEnabled(enabled: Boolean)
+
+    val shareAsImageEnabled: Flow<Boolean>
+    suspend fun setShareAsImageEnabled(enabled: Boolean)
+
     val amoledBlackEnabled: Flow<Boolean>
     suspend fun setAmoledBlackEnabled(enabled: Boolean)
 }
@@ -52,6 +58,19 @@ class ThemeRepositoryImpl(
 
     override suspend fun setHighPrecisionEnabled(enabled: Boolean) {
         themePreferences.setHighPrecisionEnabled(enabled)
+    }
+
+    override val calculatorSuggestionsEnabled: Flow<Boolean> =
+        themePreferences.calculatorSuggestionsEnabled
+
+    override suspend fun setCalculatorSuggestionsEnabled(enabled: Boolean) {
+        themePreferences.setCalculatorSuggestionsEnabled(enabled)
+    }
+
+    override val shareAsImageEnabled: Flow<Boolean> = themePreferences.shareAsImageEnabled
+
+    override suspend fun setShareAsImageEnabled(enabled: Boolean) {
+        themePreferences.setShareAsImageEnabled(enabled)
     }
 
     override val amoledBlackEnabled: Flow<Boolean> = themePreferences.amoledBlackEnabled

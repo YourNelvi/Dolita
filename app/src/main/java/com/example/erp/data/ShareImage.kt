@@ -19,14 +19,28 @@ import java.io.FileOutputStream
  * The image is a best-effort upgrade: when rendering or writing fails, the
  * share still goes out as text. A share button that silently does nothing is
  * worse than one that degrades to what the app already did.
+ *
+ * [asImage] is the user's own choice from Settings. Turning it off skips the
+ * drawing and the file entirely, so a text-only preference costs nothing and
+ * sends exactly the caption.
  */
 object ShareImage {
 
     private const val DIR = "share"
     private const val FILE_NAME = "dolita_tasa.png"
 
-    fun share(context: Context, card: ShareCard?, caption: String, chooserTitle: String) {
-        val uri = card?.let { runCatching { write(context, it) }.getOrNull() }
+    fun share(
+        context: Context,
+        card: ShareCard?,
+        caption: String,
+        chooserTitle: String,
+        asImage: Boolean = true
+    ) {
+        val uri = if (asImage) {
+            card?.let { runCatching { write(context, it) }.getOrNull() }
+        } else {
+            null
+        }
 
         val send = if (uri != null) {
             Intent(Intent.ACTION_SEND).apply {

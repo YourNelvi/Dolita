@@ -1,6 +1,7 @@
 package com.example.erp.ui
 
 import com.example.erp.data.DolarQuote
+import com.example.erp.data.PaymentProfile
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.LocalDate
@@ -35,6 +36,8 @@ object RateShareText {
      * @param highPrecision same digit rule the screen renders with: four
      *   decimals when the user asked for them, two otherwise.
      * @param nowMillis injectable so the "when this was sent" line is testable.
+     * @param payment the profile to attach as a payment block, or null to send
+     *   the rate alone. The block never touches the figure or the date.
      * @return the text to share, or **null** when there is no quote to describe —
      *   an empty string would put a blank card in front of the reader.
      */
@@ -43,8 +46,23 @@ object RateShareText {
         highPrecision: Boolean,
         zoneId: ZoneId = ZoneId.systemDefault(),
         locale: Locale = Locale.getDefault(),
-        nowMillis: Long = System.currentTimeMillis()
-    ): String? {
+        nowMillis: Long = System.currentTimeMillis(),
+        payment: PaymentProfile? = null
+    ): String? = content(quote, highPrecision, zoneId, locale, nowMillis, payment)?.toText()
+
+    /**
+     * The same payload as structured content, so the caption and the card are
+     * built from one place. A null quote yields null for the same reason
+     * [build] does: there is nothing worth sending.
+     */
+    fun content(
+        quote: DolarQuote?,
+        highPrecision: Boolean,
+        zoneId: ZoneId = ZoneId.systemDefault(),
+        locale: Locale = Locale.getDefault(),
+        nowMillis: Long = System.currentTimeMillis(),
+        payment: PaymentProfile? = null
+    ): ShareContent? {
         if (quote == null) return null
 
         val fracDigits = if (highPrecision) 4 else 2
@@ -54,13 +72,13 @@ object RateShareText {
         }
         val sentAt = Instant.ofEpochMilli(nowMillis).atZone(zoneId)
 
-        // Three lines, no decoration: what it is, what it costs, and when.
-        return buildString {
-            appendLine(quote.nombre)
-            append("Bs ${priceFormat.format(quote.promedio)}")
-            appendLine()
-            appendLine("Tasa del ${quoteDay(quote.fechaActualizacion)} · ${timeFormat.format(sentAt)}")
-        }
+        // Three bands, no decoration: what it is, what it costs, and when.
+        return ShareContent(
+            title = quote.nombre,
+            body = listOf("Bs ${priceFormat.format(quote.promedio)}"),
+            payment = payment?.shareLines().orEmpty(),
+            footnote = "Tasa del ${quoteDay(quote.fechaActualizacion)} · ${timeFormat.format(sentAt)}"
+        )
     }
 
     /**

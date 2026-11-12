@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -83,6 +84,7 @@ import com.example.erp.ui.theme.cardContainerColor
  */
 object AppLinks {
     const val GITHUB = "https://github.com/YourNelvi/Dolita"
+    const val GITHUB_PROFILE = "https://github.com/YourNelvi"
     const val INSTAGRAM = "https://www.instagram.com/yournelvi/"
 }
 
@@ -203,16 +205,24 @@ fun SettingsScreen(
     currentMode: ThemeMode,
     currentDynamicColor: Boolean,
     currentHighPrecision: Boolean,
+    currentCalculatorSuggestions: Boolean,
     currentAmoledBlack: Boolean,
     onThemeChange: (AppTheme) -> Unit,
     onModeChange: (ThemeMode) -> Unit,
     onDynamicColorChange: (Boolean) -> Unit,
     onHighPrecisionChange: (Boolean) -> Unit,
+    onCalculatorSuggestionsChange: (Boolean) -> Unit,
     onAmoledBlackChange: (Boolean) -> Unit,
     isDynamicColorAvailable: Boolean,
     onBack: () -> Unit,
     onCheckForUpdates: () -> Unit = {},
     checkingUpdate: Boolean = false,
+    paymentProfileCount: Int = 0,
+    onOpenPaymentProfiles: () -> Unit = {},
+    currentFavoriteSource: String = "usd",
+    onFavoriteSourceChange: (String) -> Unit = {},
+    currentShareAsImage: Boolean = true,
+    onShareAsImageChange: (Boolean) -> Unit = {},
     focusSection: SettingsSection? = null
 ) {
     BackHandler(onBack = onBack)
@@ -249,15 +259,23 @@ fun SettingsScreen(
             currentMode = currentMode,
             currentDynamicColor = currentDynamicColor,
             currentHighPrecision = currentHighPrecision,
+            currentCalculatorSuggestions = currentCalculatorSuggestions,
             currentAmoledBlack = currentAmoledBlack,
             onThemeChange = onThemeChange,
             onModeChange = onModeChange,
             onDynamicColorChange = onDynamicColorChange,
             onHighPrecisionChange = onHighPrecisionChange,
+            onCalculatorSuggestionsChange = onCalculatorSuggestionsChange,
             onAmoledBlackChange = onAmoledBlackChange,
             isDynamicColorAvailable = isDynamicColorAvailable,
             onCheckForUpdates = onCheckForUpdates,
             checkingUpdate = checkingUpdate,
+            paymentProfileCount = paymentProfileCount,
+            onOpenPaymentProfiles = onOpenPaymentProfiles,
+            currentFavoriteSource = currentFavoriteSource,
+            onFavoriteSourceChange = onFavoriteSourceChange,
+            currentShareAsImage = currentShareAsImage,
+            onShareAsImageChange = onShareAsImageChange,
             focusSection = focusSection,
             modifier = Modifier.padding(innerPadding)
         )
@@ -271,15 +289,23 @@ fun SettingsContent(
     currentMode: ThemeMode,
     currentDynamicColor: Boolean,
     currentHighPrecision: Boolean,
+    currentCalculatorSuggestions: Boolean,
     currentAmoledBlack: Boolean,
     onThemeChange: (AppTheme) -> Unit,
     onModeChange: (ThemeMode) -> Unit,
     onDynamicColorChange: (Boolean) -> Unit,
     onHighPrecisionChange: (Boolean) -> Unit,
+    onCalculatorSuggestionsChange: (Boolean) -> Unit,
     onAmoledBlackChange: (Boolean) -> Unit,
     isDynamicColorAvailable: Boolean,
     onCheckForUpdates: () -> Unit = {},
     checkingUpdate: Boolean = false,
+    paymentProfileCount: Int = 0,
+    onOpenPaymentProfiles: () -> Unit = {},
+    currentFavoriteSource: String = "usd",
+    onFavoriteSourceChange: (String) -> Unit = {},
+    currentShareAsImage: Boolean = true,
+    onShareAsImageChange: (Boolean) -> Unit = {},
     focusSection: SettingsSection? = null,
     modifier: Modifier = Modifier
 ) {
@@ -289,6 +315,7 @@ fun SettingsContent(
     val horizontalPadding = if (screenWidthDp < 360) 16.dp else 24.dp
 
     var showThemeDialog by remember { mutableStateOf(false) }
+    var showFavoriteSourceDialog by remember { mutableStateOf(false) }
     val alertsRequester = remember { BringIntoViewRequester() }
 
     // The update schedule is stored the same way every other preference is:
@@ -318,6 +345,130 @@ fun SettingsContent(
             .padding(horizontal = horizontalPadding)
             .padding(top = 8.dp, bottom = 24.dp)
     ) {
+        // Payment profiles are the shortest path between the rate and getting
+        // paid, so they sit above appearance: a reader looking for the account
+        // they send to a client should not have to scroll past theme controls.
+        Text(
+            text = "PAGOS",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .clickable(onClick = onOpenPaymentProfiles)
+                .padding(vertical = 10.dp, horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Perfiles de pago",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "Pago móvil y cuenta de banco",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = if (paymentProfileCount > 0) {
+                    "$paymentProfileCount · Administrar"
+                } else {
+                    "Administrar"
+                },
+                style = MaterialTheme.typography.labelLarge,
+                color = accentColor(),
+                modifier = Modifier.padding(start = 12.dp)
+            )
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // The favorite only governs the next launch; the source chips above the
+        // rate still select freely, and tapping one does not rewrite this.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .clickable { showFavoriteSourceDialog = true }
+                .padding(vertical = 10.dp, horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Moneda favorita",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "Al abrir la app se muestra esta moneda",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = favoriteSourceLabel(currentFavoriteSource),
+                style = MaterialTheme.typography.labelLarge,
+                color = accentColor(),
+                modifier = Modifier.padding(start = 12.dp)
+            )
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // Sharing the card is the default because it is what the app did before
+        // this switch existed. A reader who wants a plain, selectable message
+        // turns it off here, and the share becomes text only.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = currentShareAsImage,
+                    role = Role.Switch,
+                    onValueChange = onShareAsImageChange
+                )
+                .padding(vertical = 10.dp, horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Compartir como imagen",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "Adjunta una tarjeta con la tasa, el monto y los datos de pago. Si lo desactivas, se envía solo el texto.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = currentShareAsImage,
+                onCheckedChange = null
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        androidx.compose.material3.HorizontalDivider(
+            color = cardBorderColor()
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
         Text(
             text = "APARIENCIA",
             style = MaterialTheme.typography.labelSmall,
@@ -431,6 +582,41 @@ fun SettingsContent(
             }
             Switch(
                 checked = currentHighPrecision,
+                onCheckedChange = null
+            )
+        }
+        androidx.compose.material3.HorizontalDivider(
+            color = cardBorderColor()
+        )
+
+        // Calculator suggestions Toggle. The calculator itself stays intact;
+        // this only hides the quick amounts under the dollar field.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = currentCalculatorSuggestions,
+                    role = Role.Switch,
+                    onValueChange = onCalculatorSuggestionsChange
+                )
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Sugerencias en la calculadora",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "Atajos de 2, 5, 10, 20 y 50 en el campo de dólares",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = currentCalculatorSuggestions,
                 onCheckedChange = null
             )
         }
@@ -701,6 +887,17 @@ fun SettingsContent(
             onDismiss = { showUpdateIntervalDialog = false }
         )
     }
+
+    if (showFavoriteSourceDialog) {
+        FavoriteSourceDialog(
+            current = currentFavoriteSource,
+            onSelect = { source ->
+                onFavoriteSourceChange(source)
+                showFavoriteSourceDialog = false
+            },
+            onDismiss = { showFavoriteSourceDialog = false }
+        )
+    }
 }
 
 /**
@@ -837,6 +1034,92 @@ private fun PriceAlertSection() {
             )
         }
     }
+}
+
+/**
+ * The three currencies the app can open on, in tab order.
+ *
+ * The ids are the values `SourcePreferences` stores; only the labels are
+ * user-facing.
+ */
+private val favoriteSourceOptions = listOf(
+    "usd" to "Dólar",
+    "eur" to "Euro",
+    "usdt" to "USDT"
+)
+
+/** Label for a stored id, defaulting to the dollar for anything unreadable. */
+private fun favoriteSourceLabel(source: String): String =
+    favoriteSourceOptions.firstOrNull { it.first == source }?.second ?: "Dólar"
+
+/**
+ * Single-select dialog for the source the app opens on.
+ *
+ * The checked row is [current] — the stored favorite — not the source currently
+ * on screen: tapping a chip must leave this dialog agreeing with the next
+ * launch, not with the last tap.
+ */
+@Composable
+private fun FavoriteSourceDialog(
+    current: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.border(1.dp, cardBorderColor(), RoundedCornerShape(28.dp)),
+        shape = RoundedCornerShape(28.dp),
+        title = {
+            Text(
+                text = "Moneda favorita",
+                fontWeight = FontWeight.SemiBold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                favoriteSourceOptions.forEach { (source, label) ->
+                    val isSelected = current == source
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                color = if (isSelected) MaterialTheme.colorScheme.surfaceVariant
+                                else Color.Transparent
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (isSelected) MaterialTheme.colorScheme.outline
+                                else cardBorderColor(),
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                            .clickable { onSelect(source) }
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // The row owns the gesture; a radio that also handled
+                        // it would fire twice for one tap.
+                        RadioButton(selected = isSelected, onClick = null)
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
 }
 
 @Composable

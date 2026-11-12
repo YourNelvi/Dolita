@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Startup window surface (night). It matches the fintech background so
+        the system splash, the opening animation and the app itself are one
+        continuous surface instead of three different grays.
+    -->
+    <color name="splash_background">#FF0B0C0E</color>
+</resources>

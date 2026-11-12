@@ -13,11 +13,13 @@ import com.example.erp.data.QuoteScheduler
 import com.example.erp.data.RateHistoryStore
 import com.example.erp.data.RateSample
 import com.example.erp.data.RateSamplingPolicy
+import com.example.erp.data.SourcePreferences
 import com.example.erp.data.ThemeMode
 import com.example.erp.data.ThemePreferencesImpl
 import com.example.erp.data.ThemeRepository
 import com.example.erp.data.ThemeRepositoryImpl
 import com.example.erp.data.deleteLegacyHistoryFiles
+import com.example.erp.data.normalizeFavoriteSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,7 +46,13 @@ data class DolarUiState(
     /** True when what is on screen came from cache because a refresh failed. */
     val isStale: Boolean = false,
     /** When the shown snapshot was captured, for the staleness notice. */
-    val staleSinceEpochMillis: Long? = null
+    val staleSinceEpochMillis: Long? = null,
+    /** Which USDT side the calculator converts with; see [UsdtRateMode]. */
+    val usdtRateMode: UsdtRateMode = UsdtRateMode.PROMEDIO,
+    /** True while a manual USDT-only refresh is in flight. */
+    val usdtRefreshing: Boolean = false,
+    /** Inline message for a manual USDT refresh that returned nothing. */
+    val usdtRefreshError: String? = null
 )
 
 /**
@@ -56,7 +64,8 @@ open class DolarViewModel @JvmOverloads constructor(
     application: Application,
     private val repository: DolarRepository = CachedDolarRepository(ApiDolarRepository(), application),
     private val historyStore: RateHistoryStore = FileHistoryStore(FileHistoryStore.defaultDir(application)),
-    private val themeRepository: ThemeRepository = ThemeRepositoryImpl(ThemePreferencesImpl(application))
+    private val themeRepository: ThemeRepository = ThemeRepositoryImpl(ThemePreferencesImpl(application)),
+    private val sourcePreferences: SourcePreferences = SourcePreferences(application)
 ) : AndroidViewModel(application) {
 
     /** One USDT sample per app-open window (flag lives as long as the ViewModel). */
@@ -65,7 +74,11 @@ open class DolarViewModel @JvmOverloads constructor(
     /** Raw API quotes before date transformation, for source switching. */
     private var rawApiQuotes: List<DolarQuote> = emptyList()
 
-    private val _uiState = MutableStateFlow(DolarUiState())
+    /** The source the app opens on; changing it does not follow chip taps. */
+    private val _favoriteSource = MutableStateFlow(sourcePreferences.favoriteSource)
+    val favoriteSource: StateFlow<String> = _favoriteSource.asStateFlow()
+
+    private val _uiState = MutableStateFlow(DolarUiState(selectedFuente = _favoriteSource.value))
     val uiState: StateFlow<DolarUiState> = _uiState.asStateFlow()
 
     // Expose theme flows for UI
@@ -73,6 +86,8 @@ open class DolarViewModel @JvmOverloads constructor(
     val themeMode = themeRepository.themeMode
     val dynamicColorEnabled = themeRepository.dynamicColorEnabled
     val highPrecisionEnabled = themeRepository.highPrecisionEnabled
+    val calculatorSuggestionsEnabled = themeRepository.calculatorSuggestionsEnabled
+    val shareAsImageEnabled = themeRepository.shareAsImageEnabled
     val amoledBlackEnabled = themeRepository.amoledBlackEnabled
 
     init {
@@ -359,6 +374,103 @@ open class DolarViewModel @JvmOverloads constructor(
     }
 
     /**
+     * Persists the source the app opens on and selects it right away when the
+     * current snapshot already carries it.
+     *
+     * If the snapshot does not carry the favorite yet, the selection is left
+     * alone: `applyQuotes` falls back to the first available quote on the next
+     * load, so the screen never parks on a source it cannot render.
+     */
+    fun setFavoriteSource(source: String) {
+        val normalized = normalizeFavoriteSource(source)
+        sourcePreferences.favoriteSource = normalized
+        _favoriteSource.value = normalized
+        if (_uiState.value.quotes.any { it.fuente == normalized }) {
+            select(normalized)
+        }
+    }
+
+    /**
+     * Selects the USDT side the calculator converts with.
+     *
+     * A side the current quote does not publish is ignored instead of parking
+     * the state on a mode the screen would have to disable: the average is the
+     * only choice that always exists. The selection lives as long as the
+     * ViewModel, so switching source and coming back keeps it.
+     */
+    fun setUsdtRateMode(mode: UsdtRateMode) {
+        _uiState.update { state ->
+            if (mode != UsdtRateMode.PROMEDIO) {
+                val usdt = state.quotes.firstOrNull { it.fuente == "usdt" }
+                if (usdt == null || !usdt.tieneTasa(mode)) return@update state
+            }
+            state.copy(usdtRateMode = mode)
+        }
+    }
+
+    /**
+     * Refreshes ONLY the parallel-market quote, on the user's explicit tap.
+     *
+     * The hourly worker owns history sampling, so this re-prices the quote on
+     * screen and the cache without re-fetching BCV, re-sampling history or
+     * changing the selected source or the calculator's rate date. A null answer
+     * (network failure or an unreadable payload) keeps the old quote and turns
+     * the failure into an inline message instead of blanking the screen.
+     */
+    fun refreshUsdt() {
+        if (_uiState.value.usdtRefreshing) return
+        // Set before launching so two taps in the same frame cannot both pass.
+        _uiState.update { it.copy(usdtRefreshing = true, usdtRefreshError = null) }
+        viewModelScope.launch {
+            val refreshed = runCatching { repository.refreshUsdt() }.getOrNull()
+            if (refreshed == null) {
+                _uiState.update {
+                    it.copy(
+                        usdtRefreshing = false,
+                        usdtRefreshError = "No se pudo actualizar USDT. Intenta de nuevo."
+                    )
+                }
+                return@launch
+            }
+            rawApiQuotes = rawApiQuotes.replacingUsdt(refreshed)
+            _uiState.update { state ->
+                state.copy(
+                    quotes = state.quotes.replacingUsdt(refreshed),
+                    // A refresh can publish only one side. Falling back to the
+                    // average here keeps the selected mode honest; the derived
+                    // quote would silently fall back anyway, but the selector
+                    // would show the missing side as selected.
+                    usdtRateMode = if (
+                        state.usdtRateMode != UsdtRateMode.PROMEDIO &&
+                        !refreshed.tieneTasa(state.usdtRateMode)
+                    ) {
+                        UsdtRateMode.PROMEDIO
+                    } else {
+                        state.usdtRateMode
+                    },
+                    usdtRefreshing = false,
+                    usdtRefreshError = null,
+                    loading = false,
+                    error = null,
+                    isStale = false,
+                    staleSinceEpochMillis = null
+                )
+            }
+        }
+    }
+
+    /**
+     * Replaces the USDT entry in place, or appends it when the snapshot did not
+     * carry one yet. Order is the screen's tab order, so a refresh must not
+     * move the source under the reader's finger.
+     */
+    private fun List<DolarQuote>.replacingUsdt(quote: DolarQuote): List<DolarQuote> {
+        val index = indexOfFirst { it.fuente == quote.fuente }
+        if (index < 0) return this + quote
+        return toMutableList().also { it[index] = quote }
+    }
+
+    /**
      * Option (a): the bars are toggles, not a radio pair. Tapping the active
      * one releases it and the calculator goes back to today's rate.
      */
@@ -467,6 +579,18 @@ open class DolarViewModel @JvmOverloads constructor(
     fun setHighPrecisionEnabled(enabled: Boolean) {
         viewModelScope.launch {
             themeRepository.setHighPrecisionEnabled(enabled)
+        }
+    }
+
+    fun setCalculatorSuggestionsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            themeRepository.setCalculatorSuggestionsEnabled(enabled)
+        }
+    }
+
+    fun setShareAsImageEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            themeRepository.setShareAsImageEnabled(enabled)
         }
     }
 

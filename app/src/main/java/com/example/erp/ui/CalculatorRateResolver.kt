@@ -18,6 +18,56 @@ import java.util.Locale
 enum class CalculatorRateSource { TODAY, NEXT_RATE, SELECTED_DATE }
 
 // ============================================================================
+// USDT buy/sell rate for the calculator
+// ============================================================================
+
+/**
+ * Which USDT reference the calculator converts with.
+ *
+ * This is a calculator-only choice: the canonical `promedio` remains the
+ * number of the hero, the history and the cache. A derived quote is built for
+ * the calculator and its share, and nothing is persisted.
+ */
+enum class UsdtRateMode { COMPRA, VENTA, PROMEDIO }
+
+/**
+ * The rate this quote publishes for [mode].
+ *
+ * A side the payload did not publish falls back to the canonical average, which
+ * always exists. That is what lets the calculator keep working after a refresh
+ * where one of the two Binance P2P sides failed.
+ */
+fun DolarQuote.precioPara(mode: UsdtRateMode): Double = when (mode) {
+    UsdtRateMode.COMPRA -> compra ?: promedio
+    UsdtRateMode.VENTA -> venta ?: promedio
+    UsdtRateMode.PROMEDIO -> promedio
+}
+
+/**
+ * Whether this quote actually publishes the side [mode] asks for.
+ *
+ * The selector uses it to disable a tile instead of offering a choice whose
+ * number does not exist. The average is always present and always selectable.
+ */
+fun DolarQuote.tieneTasa(mode: UsdtRateMode): Boolean = when (mode) {
+    UsdtRateMode.COMPRA -> compra != null
+    UsdtRateMode.VENTA -> venta != null
+    UsdtRateMode.PROMEDIO -> true
+}
+
+/**
+ * A copy of this quote whose [DolarQuote.promedio] is the selected USDT side,
+ * for the calculator and the text it shares.
+ *
+ * Only USDT is re-priced: other sources have no buy/sell split and are returned
+ * untouched. This quote is derived on screen only; storing it would corrupt the
+ * canonical average the hero, history and cache rely on.
+ */
+fun DolarQuote.conTasaUsdt(mode: UsdtRateMode): DolarQuote =
+    if (fuente == "usdt") copy(promedio = precioPara(mode)) else this
+
+
+// ============================================================================
 // The published next-day day
 // ============================================================================
 

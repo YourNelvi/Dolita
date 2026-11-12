@@ -1,23 +1,33 @@
-# ERP — Dolar
+# Dolita
 
-Aplicación Android en Kotlin + Jetpack Compose que muestra la cotización del dólar y el euro publicadas por el BCV (a través de rates.dolarvzla.com) y del USDT P2P (a través de Binance), con calculadora de conversión a bolívares y gráfico de evolución. El nombre visible de la app es **Dolar** (`app_name`), aunque el proyecto y el módulo se llaman `ERP`.
+Aplicación Android en Kotlin + Jetpack Compose para consultar las cotizaciones del dólar y el euro del BCV y del USDT P2P de Binance, con calculadora, histórico, alertas y widget. El paquete y el proyecto Gradle conservan el nombre `ERP`; el nombre visible de la app es **Dolita**.
 
-<!-- Ruta de screenshots -->
-<!-- Agregar aquí capturas de pantalla, por ejemplo:
-![Pantalla principal](docs/screenshots/home.png)
-![Gráfico de evolución](docs/screenshots/evolution.png)
--->
+<!-- Capturas: pendiente de agregar la galería. -->
 
 ## Características
 
-- [x] Cotización de tres fuentes: Dólar (BCV), Euro (BCV) y USDT (P2P Binance).
-- [x] Tarjeta destacada con precio promedio, variación porcentual y fecha de actualización.
-- [x] Selector de fuente mediante chips (la tarjeta, la calculadora y el gráfico siguen la fuente elegida).
-- [x] Calculadora de conversión bolívares ↔ divisa (dos direcciones, con `BigDecimal`).
-- [x] Gráfico de evolución: compara con la cotización del día anterior cuando la fuente la provee; para fuentes sin dato anterior (USDT) genera una serie simulada dentro de la app.
-- [x] Cuatro temas de color seleccionables desde la barra superior (Dólar Verde, Azul Bancario, Violeta Elegante, Alto Contraste) + dynamic color del sistema en Android 12+.
-- [x] Estados de carga y de error con botón de reintento.
-- [x] Botón de actualización manual de las cotizaciones.
+- [x] Cotizaciones de tres fuentes: Dólar (BCV), Euro (BCV) y USDT (P2P Binance).
+- [x] Tarjeta destacada con precio, variación porcentual y fecha de actualización.
+- [x] Selector de fuente: la tarjeta, la calculadora y el gráfico siguen la fuente elegida.
+- [x] Diferencias entre monedas: cada tasa se compara contra la seleccionada, en bolívares.
+- [x] Calculadora bidireccional bolívares ↔ divisa, con `BigDecimal`, y consulta de la tasa de una fecha (últimos 3 meses).
+- [x] Histórico con las muestras que guarda la app; para BCV se apoya en la cotización del día anterior.
+- [x] Aviso de la próxima tasa BCV y alertas por umbral con notificaciones: un aviso por cruce, no cada hora.
+- [x] Widget de la tasa con minigráfico.
+- [x] Tarjeta para compartir la cotización como imagen o texto.
+- [x] Cuatro paletas (Dólar Verde, Azul Bancario, Violeta Elegante, Alto Contraste), modo sistema/claro/oscuro, color dinámico en Android 12+ y negro puro opcional para AMOLED.
+- [x] Actualización desde la app contra GitHub Releases: descarga el APK y verifica el SHA-256 antes de instalar. Frecuencia diaria, semanal o manual.
+- [x] Estados de carga y error con reintento, y actualización manual de cotizaciones.
+
+## Instalación
+
+1. Descargá el APK desde [Releases](https://github.com/YourNelvi/Dolita/releases/latest).
+2. Habilitá la instalación de apps desconocidas para el navegador o el gestor de archivos.
+3. Instalá el APK. Las versiones publicadas comparten la misma firma, así que se actualizan encima sin desinstalar.
+
+Con la app abierta, **Ajustes → Actualizaciones** permite buscar una versión nueva en el momento.
+
+> No requiere cuenta ni registro.
 
 ## Stack tecnológico
 
@@ -28,12 +38,19 @@ Aplicación Android en Kotlin + Jetpack Compose que muestra la cotización del d
 | Arquitectura | MVVM (ViewModel + StateFlow) + Repository | — |
 | Red | OkHttp | 4.12.0 |
 | Serialización | `org.json` (JSONObject, integrado en Android) | — |
+| Segundo plano | WorkManager | 2.9.0 |
 | Lifecycle | `lifecycle-runtime-ktx`, `lifecycle-viewmodel-compose` | 2.6.1 |
 | Íconos | `material-icons-extended` | vía BOM |
 | Tests unitarios | JUnit 4 | 4.13.2 |
 | Tests instrumentados | androidx.test.ext:junit, Espresso, Compose UI test | 1.1.5 / 3.5.1 / vía BOM |
 | Build | Android Gradle Plugin | 9.3.1 |
 | Gradle | Gradle Wrapper | 9.5.0 |
+
+## Fuentes de datos
+
+- **BCV (dólar y euro):** `https://rates.dolarvzla.com/bcv/current.json`, un servicio de terceros que publica las tasas oficiales.
+- **USDT (P2P):** endpoint público de Binance P2P; se promedian las primeras ofertas de compra.
+- Si Binance falla, la app sigue mostrando BCV. Si falla BCV, muestra el error con botón de reintento.
 
 ## Estructura del proyecto
 
@@ -43,33 +60,22 @@ ERP/
 │   ├── build.gradle.kts              # Configuración del módulo (SDKs, dependencias)
 │   └── src/
 │       ├── main/
-│       │   ├── AndroidManifest.xml   # Permiso INTERNET, actividad única (MainActivity)
+│       │   ├── AndroidManifest.xml
 │       │   ├── java/com/example/erp/
-│       │   │   ├── MainActivity.kt   # Punto de entrada, setContent, estado del tema
-│       │   │   ├── data/
-│       │   │   │   ├── DolarData.kt           # Modelos y contrato DolarRepository
-│       │   │   │   └── ApiDolarRepository.kt  # OkHttp + parsing (BCV, Binance P2P)
-│       │   │   └── ui/
-│       │   │       ├── DolarViewModel.kt      # Estado de UI (StateFlow) y lógica
-│       │   │       ├── DolarScreen.kt         # Pantalla principal + preview
-│       │   │       ├── components/
-│       │   │       │   └── EvolutionChart.kt  # Gráfico con Canvas + etiquetas
-│       │   │       └── theme/
-│       │   │           ├── Theme.kt  # ERPTheme, AppTheme (4 paletas), dynamic color
-│       │   │           ├── Color.kt  # Paletas y colores de semáforo (sube/baja)
-│       │   │           └── Type.kt   # Tipografías de Material3
+│       │   │   ├── MainActivity.kt   # Punto de entrada y estado del tema
+│       │   │   ├── data/             # Repositorios, caché, histórico, alertas y actualización
+│       │   │   ├── notification/     # Canales y notificaciones
+│       │   │   ├── widget/           # Widget de la tasa
+│       │   │   └── ui/               # Pantallas, componentes y tema
 │       │   ├── keepRules/rules.keep  # Reglas R8 (vacío, solo comentarios)
-│       │   └── res/                  # Recursos (strings, themes.xml, íconos, etc.)
-│       ├── test/java/com/example/erp/        # Tests unitarios locales (JVM)
-│       └── androidTest/java/com/example/erp/ # Tests instrumentados (dispositivo)
-├── gradle/
-│   ├── libs.versions.toml            # Catálogo de versiones y dependencias
-│   ├── wrapper/                      # Gradle Wrapper 9.5.0
-│   └── gradle-daemon-jvm.properties  # Toolchain JDK del daemon (25)
-├── build.gradle.kts                  # Plugins raíz (apply false)
-├── settings.gradle.kts               # Repositorios y módulo :app
-├── gradle.properties                 # JVM args, configuration cache, código estilo "official"
-├── gradlew / gradlew.bat             # Scripts del wrapper
+│       │   └── res/                  # Recursos
+│       ├── test/                     # Tests unitarios (JVM)
+│       └── androidTest/              # Tests instrumentados
+├── docs/guia-desarrollo.md           # Guía de desarrollo
+├── gradle/                           # Catálogo de versiones y wrapper
+├── odd/tasks/                        # Documentos de features
+├── build.gradle.kts
+├── settings.gradle.kts
 └── AGENTS.md                         # Convenciones para agentes/colaboradores
 ```
 
@@ -77,43 +83,45 @@ ERP/
 
 | Requisito | Detalle |
 |---|---|
-| Android Studio | Versión reciente con soporte para AGP 9.x. Android Studio muestra un aviso al abrir el proyecto si la versión instalada no soporta el AGP 9.3.1 configurado. |
-| JDK | 17 o superior para ejecutar Gradle 9.5. El proyecto configura el daemon con toolchain JDK 25 (`gradle-daemon-jvm.properties`) y lo auto-provisiona mediante el resolver de foojay si no está instalado. |
-| SDK de Android | `minSdk 30` (Android 11), `compileSdk 37`, `targetSdk 37`. |
-| Dispositivo/emulador | Android 11+ (API 30+) para ejecutar los tests instrumentados y probar la app. |
+| Android Studio | Versión reciente con soporte para AGP 9.x |
+| JDK | 17 o superior para ejecutar Gradle 9.5. El proyecto configura el daemon con toolchain JDK 25 (`gradle-daemon-jvm.properties`) y lo auto-provisiona con foojay si no está instalado |
+| SDK de Android | `minSdk 30` (Android 11), `compileSdk 37`, `targetSdk 37` |
+| Dispositivo/emulador | Android 11+ (API 30+) |
 
 ## Puesta en marcha
 
 1. Clonar el repositorio:
    ```bash
-   git clone <url-del-repositorio>
+   git clone https://github.com/YourNelvi/Dolita.git
    ```
-2. Abrir la carpeta del proyecto en Android Studio y esperar a que Gradle sincronice (el wrapper descarga Gradle 9.5.0 automáticamente).
-3. Verificar que exista `local.properties` con la ruta del SDK de Android. **Este archivo es local y NO se versiona** (está en `.gitignore`); Android Studio lo genera al abrir el proyecto.
+2. Abrir la carpeta en Android Studio y esperar a que Gradle sincronice.
+3. Verificar que exista `local.properties` con la ruta del SDK. Es local y no se versiona.
 4. Compilar el APK de depuración:
    ```bash
    ./gradlew assembleDebug
    ```
-   En Windows se puede usar `gradlew.bat` en lugar de `./gradlew`.
-5. Instalar el APK (`app/build/outputs/apk/debug/app-debug.apk`) o ejecutar la configuración de `app` desde Android Studio.
 
 ## Comandos de build y test
 
-| Comando | Qué hace | Cuándo usarlo |
-|---|---|---|
-| `./gradlew assembleDebug` | Compila el APK de depuración. | Verificar que el proyecto compila. |
-| `./gradlew testDebugUnitTest` | Ejecuta los tests unitarios locales (JVM del host), fuente `app/src/test/`. | Antes de cada commit. |
-| `./gradlew connectedDebugAndroidTest` | Ejecuta los tests instrumentados en un dispositivo/emulador conectado, fuente `app/src/androidTest/`. | Para validar comportamiento en dispositivo. |
+| Comando | Qué hace |
+|---|---|
+| `./gradlew assembleDebug` | Compila el APK de depuración |
+| `./gradlew testDebugUnitTest` | Ejecuta los tests unitarios locales (JVM) |
+| `./gradlew connectedDebugAndroidTest` | Ejecuta los tests instrumentados en un dispositivo/emulador |
+| `./gradlew assembleRelease` | Compila el APK de release (requiere las credenciales de firma) |
 
-**Por qué no usar `./gradlew test`:** la tarea genérica `test` ejecuta los unit tests de *todas* las variantes de build (debug, release, etc.), lo que es más lento y puede fallar por motivos ajenos a tu cambio (por ejemplo, la variante release con ofuscación). Los tests instrumentados no se ejecutan con `test`: requieren un dispositivo conectado y su propia tarea `connectedDebugAndroidTest`. La convención del proyecto es usar siempre la tarea específica por source set.
+**Por qué no usar `./gradlew test`:** la tarea genérica ejecuta los unit tests de todas las variantes (más lento y con fallos ajenos al cambio). La convención del proyecto es usar la tarea específica por source set.
 
-## Cómo contribuir
+## Desarrollo
 
-1. Crear una rama con nombre descriptivo desde `master` (por ejemplo, `feature/calculadora` o `fix/error-red`).
-2. Hacer cambios mínimos y enfocados, con mensajes de commit convencionales (`feat:`, `fix:`, `docs:`, `refactor:`, ...).
-3. Ejecutar `./gradlew testDebugUnitTest` y `./gradlew assembleDebug` antes de abrir el pull request.
-4. Abrir un pull request contra `master`. El repositorio no tiene CI configurado ni plantilla de PR: la revisión se hace manualmente.
+La guía ampliada está en [`docs/guia-desarrollo.md`](docs/guia-desarrollo.md). Para reportar un problema, abrí un [issue](https://github.com/YourNelvi/Dolita/issues).
+
+## Aviso
+
+Las cotizaciones son referenciales y pueden diferir de las tasas oficiales. La app no constituye asesoría financiera.
 
 ## Licencia
 
-Sin licencia definida. El repositorio no incluye un archivo `LICENSE`; por defecto se aplican las restricciones del derecho de autor y no se concede permiso explícito de uso, copia o distribución.
+Software propietario. Todos los derechos reservados. Ver [`LICENSE.md`](LICENSE.md).
+
+© 2026 YourNelvi

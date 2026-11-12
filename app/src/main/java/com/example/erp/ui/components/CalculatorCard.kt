@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -12,7 +13,14 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,6 +41,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,8 +51,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -52,8 +64,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import com.example.erp.data.CalculatorSuggestions
 import com.example.erp.data.CurrencyConverter
 import com.example.erp.data.DolarQuote
 import com.example.erp.ui.differentialGapLabel
@@ -63,6 +79,7 @@ import com.example.erp.ui.theme.cardBorderColor
 import com.example.erp.ui.theme.cardContainerColor
 import com.example.erp.ui.theme.positiveColor
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlin.math.abs
@@ -99,11 +116,14 @@ private data class AlternativeMarket(
  *   control lives outside this card, so the amounts it must send are lifted out
  *   here instead of being read out of private state at the click site: one
  *   source of truth, and no second copy that can drift from what is on screen.
+ * @param suggestionsEnabled shows the quick dollar amounts under the dollar
+ *   field. Turning it off hides them without changing the calculator.
  */
 @Composable
 fun CalculatorCard(
     quote: DolarQuote?,
     quotes: List<DolarQuote> = emptyList(),
+    suggestionsEnabled: Boolean = true,
     onAmountsChanged: (bolivaresDigits: String, divisaDigits: String) -> Unit = { _, _ -> }
 ) {
     if (quote == null) return
@@ -143,7 +163,12 @@ fun CalculatorCard(
     var vesDigits by remember { mutableStateOf("") }
     var divDigits by remember { mutableStateOf("100") } // Empezar en 1,00
     var hasTyped by remember { mutableStateOf(false) }
+    var showSuggestions by remember { mutableStateOf(false) }
     val context = LocalContext.current
+
+    // The quick amounts are a floating palette, not a permanent row: back
+    // closes it without leaving the calculator.
+    BackHandler(enabled = showSuggestions) { showSuggestions = false }
 
     // Estado de animación para cada botón
     var copiedVes by remember { mutableStateOf(false) }
@@ -299,44 +324,97 @@ fun CalculatorCard(
             )
             Spacer(Modifier.height(10.dp))
 
-            // Campo divisa con botón de copiar dentro
-            AmountField(
-                value = divDigits,
-                label = shortName,
-                onValueChange = { raw ->
-                    if (!hasTyped) {
-                        hasTyped = true
-                        // First keystroke replaces the prefilled default (see VES field).
-                        val fresh = CurrencyConverter.normalizeDigits(raw.removePrefix(divDigits))
-                        divDigits = fresh
-                        lastEdited = "div"
-                        vesDigits = CurrencyConverter.divToVes(divDigits, rate)
-                    } else {
-                        divDigits = CurrencyConverter.normalizeDigits(raw)
-                        lastEdited = "div"
-                        vesDigits = CurrencyConverter.divToVes(divDigits, rate)
+            // Campo divisa con botón de copiar dentro. The quick amounts are
+            // a floating palette anchored above this field: they appear when
+            // the reader stands on it and leave on selection or first digit.
+            val canSuggest = suggestionsEnabled && rate > 0.0 &&
+                (quote.fuente == "usd" || quote.fuente == "usdt")
+            val dollarInteraction = remember { MutableInteractionSource() }
+
+            LaunchedEffect(dollarInteraction, canSuggest) {
+                if (!canSuggest) return@LaunchedEffect
+                dollarInteraction.interactions.collect { interaction ->
+                    if (interaction is PressInteraction.Release) {
+                        showSuggestions = true
                     }
-                },
-                trailingIcon = {
-                    CopyIconButton(
-                        copied = copiedDiv,
-                        onClick = {
-                            val displayValue = if (divDigits.isNotEmpty()) {
-                                val v = CurrencyConverter.parseDigits(divDigits)
-                                if (v != null) CurrencyConverter.format(v) else ""
-                            } else {
-                                "1,00"
-                            }
-                            if (displayValue.isNotEmpty()) {
-                                copyToClipboard(displayValue, shortName)
-                                copiedDiv = true
-                            }
-                        },
-                        onReset = { copiedDiv = false },
-                        contentDescription = "Copiar $shortName"
-                    )
                 }
-            )
+            }
+            LaunchedEffect(canSuggest) {
+                if (!canSuggest) showSuggestions = false
+            }
+
+            Box(modifier = Modifier.fillMaxWidth()) {
+                AmountField(
+                    value = divDigits,
+                    label = shortName,
+                    onValueChange = { raw ->
+                        // A custom amount means the reader is done with the
+                        // shortcuts; keep the field clear of the palette.
+                        showSuggestions = false
+                        if (!hasTyped) {
+                            hasTyped = true
+                            // First keystroke replaces the prefilled default (see VES field).
+                            val fresh =
+                                CurrencyConverter.normalizeDigits(raw.removePrefix(divDigits))
+                            divDigits = fresh
+                            lastEdited = "div"
+                            vesDigits = CurrencyConverter.divToVes(divDigits, rate)
+                        } else {
+                            divDigits = CurrencyConverter.normalizeDigits(raw)
+                            lastEdited = "div"
+                            vesDigits = CurrencyConverter.divToVes(divDigits, rate)
+                        }
+                    },
+                    trailingIcon = {
+                        CopyIconButton(
+                            copied = copiedDiv,
+                            onClick = {
+                                val displayValue = if (divDigits.isNotEmpty()) {
+                                    val v = CurrencyConverter.parseDigits(divDigits)
+                                    if (v != null) CurrencyConverter.format(v) else ""
+                                } else {
+                                    "1,00"
+                                }
+                                if (displayValue.isNotEmpty()) {
+                                    copyToClipboard(displayValue, shortName)
+                                    copiedDiv = true
+                                }
+                            },
+                            onReset = { copiedDiv = false },
+                            contentDescription = "Copiar $shortName"
+                        )
+                    },
+                    interactionSource = dollarInteraction,
+                    onFocusChanged = { focused ->
+                        if (focused && canSuggest) showSuggestions = true
+                        if (!focused) showSuggestions = false
+                    }
+                )
+
+                if (showSuggestions && canSuggest) {
+                    Popup(
+                        alignment = Alignment.TopCenter,
+                        offset = IntOffset(
+                            x = 0,
+                            y = -with(LocalDensity.current) { 92.dp.roundToPx() }
+                        ),
+                        onDismissRequest = { showSuggestions = false },
+                        properties = PopupProperties(focusable = false)
+                    ) {
+                        AmountSuggestionsPopup(
+                            selectedDigits = divDigits,
+                            onSelect = { amount ->
+                                hasTyped = true
+                                lastEdited = "div"
+                                divDigits = CalculatorSuggestions.digits(amount)
+                                vesDigits = CurrencyConverter.divToVes(divDigits, rate)
+                                showSuggestions = false
+                            }
+                        )
+                    }
+                }
+            }
+
             Spacer(Modifier.height(8.dp))
             Text(
                 text = if (lastEdited == "ves") {
@@ -615,6 +693,95 @@ private fun DifferentialRow(label: String, value: String, otherAbove: Boolean) {
     }
 }
 
+/**
+ * The quick dollar amounts. A single row of equal pills keeps the five values
+ * on one line on the narrowest phone, and the selected pill marks the amount
+ * currently in the dollar field.
+ */
+@Composable
+private fun AmountSuggestions(
+    selectedDigits: String,
+    onSelect: (Int) -> Unit
+) {
+    val shape = RoundedCornerShape(50)
+    val interactionSource = remember { MutableInteractionSource() }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        CalculatorSuggestions.amounts.forEach { amount ->
+            val digits = CalculatorSuggestions.digits(amount)
+            val selected = selectedDigits == digits
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(shape)
+                    .background(
+                        if (selected) accentColor().copy(alpha = 0.14f)
+                        else MaterialTheme.colorScheme.surfaceVariant
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = if (selected) accentColor().copy(alpha = 0.55f)
+                        else cardBorderColor(),
+                        shape = shape
+                    )
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null
+                    ) { onSelect(amount) }
+                    .padding(vertical = 7.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = amount.toString(),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    color = if (selected) accentColor()
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The floating counterpart of [AmountSuggestions]. It sits above the dollar
+ * field while that field is focused, so the shortcuts are available only when
+ * the reader is actually working on the amount and never rent permanent space
+ * in the card.
+ */
+@Composable
+private fun AmountSuggestionsPopup(
+    selectedDigits: String,
+    onSelect: (Int) -> Unit
+) {
+    Surface(
+        modifier = Modifier.width(300.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 8.dp,
+        shadowElevation = 16.dp,
+        border = BorderStroke(1.dp, cardBorderColor())
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(
+                text = "Monto rápido",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            AmountSuggestions(
+                selectedDigits = selectedDigits,
+                onSelect = onSelect
+            )
+        }
+    }
+}
+
 @Composable
 private fun CopyIconButton(
     copied: Boolean,
@@ -671,7 +838,9 @@ private fun AmountField(
     label: String,
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
-    trailingIcon: @Composable (() -> Unit)? = null
+    trailingIcon: @Composable (() -> Unit)? = null,
+    interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    onFocusChanged: (Boolean) -> Unit = {}
 ) {
     OutlinedTextField(
         value = value,
@@ -681,6 +850,7 @@ private fun AmountField(
         trailingIcon = trailingIcon,
         textStyle = AmountTextStyle,
         shape = RoundedCornerShape(12.dp),
+        interactionSource = interactionSource,
         colors = OutlinedTextFieldDefaults.colors(
             // Clean inset box sitting on the fintech surface.
             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -699,7 +869,9 @@ private fun AmountField(
             imeAction = androidx.compose.ui.text.input.ImeAction.Next
         ),
         visualTransformation = NumberVisualTransformation,
-        modifier = modifier.fillMaxWidth()
+        modifier = modifier
+            .fillMaxWidth()
+            .onFocusChanged { onFocusChanged(it.isFocused) }
     )
 }
 

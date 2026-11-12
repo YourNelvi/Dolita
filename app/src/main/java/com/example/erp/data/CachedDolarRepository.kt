@@ -32,4 +32,21 @@ class CachedDolarRepository(
         }
         quotes
     }
+
+    /**
+     * Refreshes only USDT and writes it through the cache. Null means the
+     * request failed; the caller keeps the quote already on screen instead of
+     * blanking a market because one button press could not reach Binance.
+     */
+    override suspend fun refreshUsdt(): DolarQuote? = withContext(Dispatchers.IO) {
+        runCatching { apiRepository.fetchUsdtQuote() }
+            .onSuccess { quote ->
+                QuotesCache.upsert(context, quote)
+                Log.d(TAG, "USDT refreshed at ${quote.fechaActualizacion}")
+            }
+            .onFailure { error ->
+                Log.w(TAG, "USDT refresh failed: ${error.message}")
+            }
+            .getOrNull()
+    }
 }

@@ -56,6 +56,12 @@ object MotionDurations {
     const val LAUNCH = 500
     const val TICKER = 420
     const val STAGGER = 60
+
+    /** Shortest time the cold-start curtain stays up, even on an instant load. */
+    const val OPENING_MIN = 900
+
+    /** After this, the skeleton takes over so a slow network is never hidden. */
+    const val OPENING_MAX = 3_000
 }
 
 /** Decelerating curve used everywhere: fast out of the gate, soft landing. */

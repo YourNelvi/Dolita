@@ -2,7 +2,10 @@ package com.example.erp.data
 
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import java.time.ZoneId
+import java.util.Locale
 
 /**
  * When Dolita is allowed to spend a request, and when a stored rate is still
@@ -138,6 +141,161 @@ object RateSchedulePolicy {
         return next.toInstant().toEpochMilli() - now
     }
 
+    // ========================================================================
+    // USDT countdown
+    // ========================================================================
+
+    /**
+     * The next moment the USDT worker can actually run, measured from
+     * [nowMillis] on the device clock:
+     *
+     * - before 08:00, today at 08:00;
+     * - inside the 08:00–21:59 window, the next full hour;
+     * - at 21:00 or later, tomorrow at 08:00.
+     *
+     * The window's close is not a fetch slot: the worker runs on the hour, so
+     * the 21:00 sample is the last one and the next real sample after it is
+     * tomorrow morning. A countdown to 22:00 would tick down to a moment
+     * nothing happens.
+     */
+    fun nextUsdtFetchMillis(
+        nowMillis: Long,
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): Long {
+        val zoned = Instant.ofEpochMilli(nowMillis).atZone(zoneId)
+        val target = when {
+            zoned.hour < PARALLEL_WINDOW_START_HOUR -> zoned
+                .withHour(PARALLEL_WINDOW_START_HOUR)
+                .withMinute(0)
+                .withSecond(0)
+                .withNano(0)
+
+            zoned.hour < PARALLEL_WINDOW_END_HOUR - 1 -> zoned
+                .withHour(zoned.hour + 1)
+                .withMinute(0)
+                .withSecond(0)
+                .withNano(0)
+
+            else -> zoned
+                .plusDays(1)
+                .withHour(PARALLEL_WINDOW_START_HOUR)
+                .withMinute(0)
+                .withSecond(0)
+                .withNano(0)
+        }
+        return target.toInstant().toEpochMilli()
+    }
+
+    /**
+     * The last scheduled slot at or before [nowMillis]: the start of the
+     * current hourly cycle, or 21:00 when the window is closed. Paired with
+     * [nextUsdtFetchMillis], it gives the real span the progress bar drains
+     * over (one hour during the day, the overnight gap at night).
+     */
+    fun previousUsdtFetchMillis(
+        nowMillis: Long,
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): Long {
+        val zoned = Instant.ofEpochMilli(nowMillis).atZone(zoneId)
+        val target = when {
+            zoned.hour < PARALLEL_WINDOW_START_HOUR -> zoned
+                .minusDays(1)
+                .withHour(PARALLEL_WINDOW_END_HOUR - 1)
+                .withMinute(0)
+                .withSecond(0)
+                .withNano(0)
+
+            zoned.hour < PARALLEL_WINDOW_END_HOUR -> zoned
+                .withMinute(0)
+                .withSecond(0)
+                .withNano(0)
+
+            else -> zoned
+                .withHour(PARALLEL_WINDOW_END_HOUR - 1)
+                .withMinute(0)
+                .withSecond(0)
+                .withNano(0)
+        }
+        return target.toInstant().toEpochMilli()
+    }
+
+    /**
+     * Reads a stored USDT sample timestamp. Accepts the ISO offset string the
+     * worker writes (`OffsetDateTime.now().toString()`), an [Instant] string,
+     * and a local date-time interpreted in [zoneId].
+     *
+     * Blank or unreadable values are null rather than "now": the card shows the
+     * cadence without a countdown instead of inventing a sample moment.
+     */
+    fun parseUsdtFetchMillis(
+        value: String?,
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): Long? {
+        if (value.isNullOrBlank()) return null
+        val trimmed = value.trim()
+        return runCatching { OffsetDateTime.parse(trimmed).toInstant().toEpochMilli() }.getOrNull()
+            ?: runCatching { Instant.parse(trimmed).toEpochMilli() }.getOrNull()
+            ?: runCatching {
+                LocalDateTime.parse(trimmed).atZone(zoneId).toInstant().toEpochMilli()
+            }.getOrNull()
+    }
+
+    /**
+     * The state the USDT countdown card renders from [nowMillis] and the last
+     * recorded sample.
+     *
+     * The bar shows the remaining share of the real scheduled span, from the
+     * previous slot to the next one: full right after a slot, empty right
+     * before the next. It deliberately ignores the sample time for the
+     * fraction, so a manual refresh does not restart the hourly clock. Without
+     * a sample there is nothing to announce, so
+     * [UsdtCountdown.remainingFraction] stays at zero. The value is clamped to
+     * `0f..1f` so a clock jump can never paint a bar past its ends.
+     */
+    fun usdtCountdown(
+        nowMillis: Long,
+        lastFetchMillis: Long?,
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): UsdtCountdown {
+        val next = nextUsdtFetchMillis(nowMillis, zoneId)
+        val remaining = (next - nowMillis).coerceAtLeast(0L)
+        val remainingFraction = if (lastFetchMillis == null) {
+            0f
+        } else {
+            val previous = previousUsdtFetchMillis(nowMillis, zoneId)
+            val span = (next - previous).toDouble()
+            if (span <= 0.0) {
+                0f
+            } else {
+                (remaining / span).toFloat().coerceIn(0f, 1f)
+            }
+        }
+        return UsdtCountdown(
+            nextFetchMillis = next,
+            remainingMillis = remaining,
+            remainingFraction = remainingFraction
+        )
+    }
+
+    /**
+     * `mm:ss` under an hour and `h:mm:ss` from one hour, with minutes and
+     * seconds zero-padded and hours not (`44:17`, `8:00:00`).
+     *
+     * Remaining time is a countdown, not a duration with sign: anything at or
+     * below zero reads as `00:00`.
+     */
+    fun formatUsdtCountdown(remainingMillis: Long): String {
+        val totalSeconds = (remainingMillis / 1_000L).coerceAtLeast(0L)
+        val hours = totalSeconds / 3_600L
+        val minutes = (totalSeconds % 3_600L) / 60L
+        val seconds = totalSeconds % 60L
+        return if (hours > 0L) {
+            String.format(Locale.ROOT, "%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            String.format(Locale.ROOT, "%02d:%02d", minutes, seconds)
+        }
+    }
+
     /**
      * Milliseconds from [now] to [targetHour]:0 on the device clock, rolling to
      * tomorrow when the hour has already passed today.
@@ -197,3 +355,14 @@ object RateSchedulePolicy {
         if (nextRateFound) nextHourAt(now, BCV_EVENING_HOUR, zoneId)
         else nextEveningSlot(now, zoneId)
 }
+
+/**
+ * Everything the USDT countdown card needs from one clock read: when the next
+ * hourly sample is due, how long that is from now, and how much of the real
+ * scheduled span (previous slot to next slot) is still left.
+ */
+data class UsdtCountdown(
+    val nextFetchMillis: Long,
+    val remainingMillis: Long,
+    val remainingFraction: Float
+)
