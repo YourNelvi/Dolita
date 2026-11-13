@@ -126,6 +126,30 @@ object CurrencyConverter {
     }
 
     /**
+     * Converts an entered amount at a comparison rate without depending on Compose.
+     *
+     * When the user enters bolivars, the amount is divided by the Bs-per-unit rate
+     * to produce the foreign-currency amount. When the user enters the currency,
+     * it is multiplied to produce bolivars. The division scale and rounding mode
+     * intentionally match the comparison shown by CalculatorCard.
+     *
+     * @throws IllegalArgumentException when [rate] is not a finite positive rate.
+     */
+    fun convertForComparison(
+        amount: BigDecimal,
+        rate: Double,
+        editingBolivares: Boolean
+    ): BigDecimal {
+        require(rate.isFinite() && rate > 0.0) { "rate must be finite and positive" }
+        val rateValue = BigDecimal.valueOf(rate)
+        return if (editingBolivares) {
+            amount.divide(rateValue, 6, RoundingMode.HALF_UP)
+        } else {
+            amount.multiply(rateValue)
+        }
+    }
+
+    /**
      * [vesDigits] expressed in the divisa, ready to be shown by the second
      * field. Rounds to two decimals, so an amount under half a cent of the
      * divisa collapses to zero. Empty when the field is empty or the rate is
