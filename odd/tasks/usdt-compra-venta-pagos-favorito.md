@@ -356,6 +356,19 @@ Reglas:
     ajeno: la actualización se descargó y se instaló desde la app.
   - Commits: `7ab691c` (feat) + `5ff564c` (chore: bump version to 1.31.1),
     tag `v1.31.1` sobre `5ff564c`, rama `stabilize-release-readiness` pusheada.
+- [x] T17 — El banco de los perfiles de pago ya no se escribe (S10): el campo
+  es un selector y el valor sale del catálogo.
+  - Evidencia: `isKnownVenezuelanBank` en `VenezuelanBanks.kt` con 5 casos en
+    `VenezuelanBanksTest` (label del catálogo, código suelto, texto libre,
+    código inexistente y vacío). `BankField` queda deshabilitado con los
+    colores normales: sin teclado, sin cursor y sin edición; la flechita es
+    la única entrada al catálogo. La validación del formulario ahora exige
+    un banco del catálogo, no solo texto no vacío.
+  - Verificado en el Redmi: al tocar el texto del campo `mInputShown=false`
+    y el teclado no aparece; `input text` no escribe nada en el campo; la
+    flechita abre la lista; al elegir "0102 · Banco de Venezuela (BDV)" el
+    campo se completa y "Guardar" se habilita.
+  - Commit `820976c`, pusheado. Queda para el próximo release.
 
 ## Log
 
