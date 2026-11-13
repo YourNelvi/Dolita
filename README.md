@@ -132,8 +132,26 @@ La guía ampliada está en [`docs/guia-desarrollo.md`](docs/guia-desarrollo.md).
 
 Las cotizaciones son referenciales y pueden diferir de las tasas oficiales. La app no constituye asesoría financiera.
 
-## Licencia
+## Licencia y atribución
 
-Software propietario. Todos los derechos reservados. Ver [`LICENSE.md`](LICENSE.md).
+Dolita utiliza la **Dolita Attribution-NonCommercial License (DANCL) 1.0**. Puedes
+clonar el repositorio, estudiar el código, usarlo, modificarlo y compartir copias para
+fines no comerciales, siempre que conserves los avisos de copyright y des crédito
+visible a **YourNelvi**, con un enlace al [repositorio original](https://github.com/YourNelvi/Dolita).
+
+Si distribuyes una versión modificada, debes indicar claramente qué cambiaste y que
+no se trata de la versión oficial. Si distribuyes la aplicación compilada, el crédito
+y el enlace al proyecto deben aparecer en una pantalla o sección de Acerca de,
+Créditos o equivalente, además de los materiales de distribución cuando sea posible.
+
+**No está permitido el uso comercial** sin autorización previa y por escrito de
+YourNelvi. La licencia es una licencia personalizada de código disponible (*source
+available*), no una licencia Open Source aprobada por la OSI. Consulta los términos
+completos en [LICENSE.md](LICENSE.md).
+
+Atribución sugerida:
+
+> Basado en Dolita, creado originalmente por YourNelvi.
+> Proyecto original: https://github.com/YourNelvi/Dolita
 
 © 2026 YourNelvi
