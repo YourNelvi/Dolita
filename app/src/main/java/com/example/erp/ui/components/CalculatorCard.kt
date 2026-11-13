@@ -434,18 +434,18 @@ fun CalculatorCard(
                 CurrencyConverter.parseDigits(divDigits)
             }
             if (alternativeRate != null && alternative != null && entered != null && entered > BigDecimal.ZERO) {
-                // Direction matters: bolivar input divides down into the
-                // currency, currency input multiplies up into bolivars.
-                // Getting this backwards is how 1,00 USD became "Bs 0,00".
-                fun convert(amount: BigDecimal, rateValue: Double): BigDecimal =
-                    if (editingBolivares) {
-                        amount.divide(BigDecimal.valueOf(rateValue), 6, RoundingMode.HALF_UP)
-                    } else {
-                        amount.multiply(BigDecimal.valueOf(rateValue))
-                    }
-
-                val atSelected = convert(entered, rate)
-                val atOther = convert(entered, alternativeRate)
+                // Keep the same conversion direction for both markets, with
+                // the arithmetic in CurrencyConverter so it is covered by JVM tests.
+                val atSelected = CurrencyConverter.convertForComparison(
+                    entered,
+                    rate,
+                    editingBolivares
+                )
+                val atOther = CurrencyConverter.convertForComparison(
+                    entered,
+                    alternativeRate,
+                    editingBolivares
+                )
                 val delta = atOther.subtract(atSelected)
                 val difference = delta.abs()
                 val unit = if (editingBolivares) shortName else "Bs"
