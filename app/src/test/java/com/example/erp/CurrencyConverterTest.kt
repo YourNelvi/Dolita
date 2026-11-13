@@ -20,6 +20,50 @@ class CurrencyConverterTest {
     private val bcvRate = 36.5644
     private val neatRate = 3.0
 
+    
+    @Test
+    fun `comparison conversion divides bolivars into currency`() {
+        val converted = CurrencyConverter.convertForComparison(
+            BigDecimal("3656.44"),
+            36.5644,
+            editingBolivares = true
+        )
+        assertEquals(0, BigDecimal("100.000000").compareTo(converted))
+    }
+
+    @Test
+    fun `comparison conversion multiplies currency into bolivars`() {
+        val converted = CurrencyConverter.convertForComparison(
+            BigDecimal("100"),
+            36.5644,
+            editingBolivares = false
+        )
+        assertEquals(0, BigDecimal("3656.4400").compareTo(converted))
+    }
+
+    @Test
+    fun `comparison conversion rounds division half up to six decimals`() {
+        val converted = CurrencyConverter.convertForComparison(
+            BigDecimal("1"),
+            6.0,
+            editingBolivares = true
+        )
+        assertEquals(0, BigDecimal("0.166667").compareTo(converted))
+    }
+
+    @Test
+    fun `comparison conversion rejects non positive and non finite rates`() {
+        listOf(0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY).forEach { rate ->
+            assertThrows(IllegalArgumentException::class.java) {
+                CurrencyConverter.convertForComparison(
+                    BigDecimal("1"),
+                    rate,
+                    editingBolivares = true
+                )
+            }
+        }
+    }
+
     @Test
     fun `parseDigits treats the last two digits as the decimals`() {
         assertEquals(0, BigDecimal("0.00").compareTo(parseDigits("0")!!))
