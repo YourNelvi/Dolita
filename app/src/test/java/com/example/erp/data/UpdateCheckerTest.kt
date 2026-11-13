@@ -139,23 +139,23 @@ class UpdateCheckerTest {
     @Test
     fun `a launch check runs once the chosen interval has passed`() {
         val now = 1_000_000_000_000L
-        val day = UpdateCheckInterval.DAILY.intervalMs!!
+        val window = UpdateCheckInterval.FREQUENT.intervalMs!!
         val week = UpdateCheckInterval.WEEKLY.intervalMs!!
 
         assertTrue(shouldCheckForUpdate(0L, now, force = false))
-        assertFalse(shouldCheckForUpdate(now, now + day - 1, force = false))
-        assertTrue(shouldCheckForUpdate(now, now + day, force = false))
-        assertTrue(shouldCheckForUpdate(now, now + day - 1, force = true))
+        assertFalse(shouldCheckForUpdate(now, now + window - 1, force = false))
+        assertTrue(shouldCheckForUpdate(now, now + window, force = false))
+        assertTrue(shouldCheckForUpdate(now, now + window - 1, force = true))
         assertTrue(
             "a clock that moved backwards must not freeze checks",
             shouldCheckForUpdate(now, now - 1, force = false)
         )
 
         assertFalse(
-            "a weekly interval does not fire after a day",
+            "a weekly interval does not fire after the frequent window",
             shouldCheckForUpdate(
                 now,
-                now + day,
+                now + window,
                 force = false,
                 interval = UpdateCheckInterval.WEEKLY
             )
@@ -213,10 +213,10 @@ class UpdateCheckerTest {
 
     @Test
     fun `an unreadable stored interval falls back to daily`() {
-        assertEquals(UpdateCheckInterval.DAILY, UpdateCheckInterval.fromStorage(null))
-        assertEquals(UpdateCheckInterval.DAILY, UpdateCheckInterval.fromStorage(""))
-        assertEquals(UpdateCheckInterval.DAILY, UpdateCheckInterval.fromStorage("hourly"))
-        assertEquals(UpdateCheckInterval.DAILY, UpdateCheckInterval.fromStorage("Cada día"))
+        assertEquals(UpdateCheckInterval.FREQUENT, UpdateCheckInterval.fromStorage(null))
+        assertEquals(UpdateCheckInterval.FREQUENT, UpdateCheckInterval.fromStorage(""))
+        assertEquals(UpdateCheckInterval.FREQUENT, UpdateCheckInterval.fromStorage("hourly"))
+        assertEquals(UpdateCheckInterval.FREQUENT, UpdateCheckInterval.fromStorage("Cada día"))
         assertEquals(UpdateCheckInterval.WEEKLY, UpdateCheckInterval.fromStorage("weekly"))
         assertEquals(UpdateCheckInterval.NEVER, UpdateCheckInterval.fromStorage("never"))
     }
@@ -225,5 +225,99 @@ class UpdateCheckerTest {
     fun `the apk size is shown in decimal megabytes`() {
         assertEquals("48.7 MB", formatApkSize(48_669_750L, Locale.US))
         assertEquals("", formatApkSize(0L, Locale.US))
+    }
+
+    @Test
+    fun `the frequent window is two hours`() {
+        assertEquals(
+            2L * 60L * 60L * 1000L,
+            UpdateCheckInterval.FREQUENT.intervalMs
+        )
+    }
+
+    @Test
+    fun `an automatic check offers a release the reader did not dismiss`() {
+        assertTrue(
+            shouldShowUpdateDialog(
+                releaseVersion = "1.31.1",
+                currentVersion = "1.31.0",
+                dismissedVersion = null,
+                manual = false
+            )
+        )
+    }
+
+    @Test
+    fun `a dismissed release does not come back on its own`() {
+        assertFalse(
+            shouldShowUpdateDialog(
+                releaseVersion = "1.31.1",
+                currentVersion = "1.31.0",
+                dismissedVersion = "1.31.1",
+                manual = false
+            )
+        )
+    }
+
+    @Test
+    fun `a manual check shows the release even if it was dismissed`() {
+        assertTrue(
+            shouldShowUpdateDialog(
+                releaseVersion = "1.31.1",
+                currentVersion = "1.31.0",
+                dismissedVersion = "1.31.1",
+                manual = true
+            )
+        )
+    }
+
+    @Test
+    fun `a release that is not newer is never offered`() {
+        assertFalse(
+            shouldShowUpdateDialog(
+                releaseVersion = "1.31.0",
+                currentVersion = "1.31.0",
+                dismissedVersion = null,
+                manual = true
+            )
+        )
+    }
+
+    @Test
+    fun `a newer release is news again`() {
+        assertTrue(
+            shouldShowUpdateDialog(
+                releaseVersion = "1.31.2",
+                currentVersion = "1.31.0",
+                dismissedVersion = "1.31.1",
+                manual = false
+            )
+        )
+    }
+
+    @Test
+    fun `the redirect of the releases page carries the published version`() {
+        assertEquals(
+            "1.31.1",
+            versionFromReleaseRedirect(
+                "https://github.com/YourNelvi/Dolita/releases/tag/v1.31.1"
+            )
+        )
+        assertEquals(
+            "1.31.1",
+            versionFromReleaseRedirect(
+                "https://github.com/YourNelvi/Dolita/releases/tag/V1.31.1"
+            )
+        )
+    }
+
+    @Test
+    fun `a redirect without a tag means there is nothing published`() {
+        assertEquals("", versionFromReleaseRedirect(null))
+        assertEquals("", versionFromReleaseRedirect(""))
+        assertEquals(
+            "",
+            versionFromReleaseRedirect("https://github.com/YourNelvi/Dolita/releases")
+        )
     }
 }

@@ -57,6 +57,13 @@ internal data class Semver(val major: Int, val minor: Int, val patch: Int)
 internal const val GITHUB_RELEASES_LATEST_URL =
     "https://api.github.com/repos/YourNelvi/Dolita/releases/latest"
 
+/**
+ * The releases page, which answers "which version is published?" with a
+ * redirect instead of a JSON body — and without spending the API quota.
+ */
+internal const val GITHUB_RELEASES_LATEST_PAGE =
+    "https://github.com/YourNelvi/Dolita/releases/latest"
+
 private const val FALLBACK_RELEASE_URL =
     "https://github.com/YourNelvi/Dolita/releases/latest"
 
@@ -92,6 +99,18 @@ class UpdateChecker(
         }
 
         return try {
+            // The cheap question comes first: which version is published?
+            // The releases page answers it with a redirect, and the web front
+            // end does not spend the API quota that every Dolita reader
+            // behind the same carrier shares.
+            val publishedVersion = fetchLatestPublishedVersion()
+            if (!isNewerVersion(publishedVersion, currentVersion)) {
+                preferences.lastSuccessfulCheckEpochMs = now
+                return UpdateCheckResult.UpToDate
+            }
+
+            // Something newer exists, so now one API call buys the notes, the
+            // APK and the digest. It is spent only when there is news.
             val release = parseLatestRelease(fetchLatestReleaseJson())
                 ?: return UpdateCheckResult.Failed("No se pudo leer la respuesta de GitHub.")
 
@@ -123,6 +142,46 @@ class UpdateChecker(
         }
     }
 
+    /**
+     * Reads the version of the newest published release without spending API
+     * quota.
+     *
+     * The releases page answers with a redirect to the newest release, and the
+     * web front end is not the API: its quota is orders of magnitude bigger
+     * and it is not shared per carrier the way the API's sixty requests per
+     * hour are. This is the check that can safely run on every launch.
+     */
+    private suspend fun fetchLatestPublishedVersion(): String = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url(GITHUB_RELEASES_LATEST_PAGE)
+            .header("User-Agent", "Dolita/$currentVersion")
+            .build()
+
+        // The redirect IS the answer. Following it would download the whole
+        // release page to read one word.
+        client.newBuilder()
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+            .newCall(request)
+            .execute()
+            .use { response ->
+                when {
+                    response.code == 404 ->
+                        throw UpdateHttpException("No hay releases publicadas.")
+
+                    response.code == 403 || response.code == 429 ->
+                        throw UpdateHttpException("GitHub limitó las consultas. Probá más tarde.")
+
+                    response.isRedirect -> versionFromReleaseRedirect(response.header("Location"))
+
+                    response.isSuccessful -> ""
+
+                    else -> throw UpdateHttpException("GitHub respondió HTTP ${response.code}.")
+                }
+            }
+    }
+
     private suspend fun fetchLatestReleaseJson(): String = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(GITHUB_RELEASES_LATEST_URL)
@@ -147,6 +206,19 @@ class UpdateChecker(
             }
         }
     }
+}
+
+/**
+ * Reads the version out of the redirect the releases page answers with.
+ *
+ * `https://github.com/owner/repo/releases/latest` answers with a 302 to
+ * `.../releases/tag/v1.31.1`, so the published version is in the last path
+ * segment. An empty answer means there is nothing published to point at.
+ */
+internal fun versionFromReleaseRedirect(location: String?): String {
+    val target = location?.substringAfterLast("/releases/tag/", "")?.trim().orEmpty()
+    if (target.isEmpty()) return ""
+    return target.removePrefix("v").removePrefix("V").trim()
 }
 
 private class UpdateHttpException(message: String) : IOException(message)
@@ -182,6 +254,26 @@ internal fun parseSemver(value: String): Semver? {
         minor = numbers.getOrElse(1) { 0 },
         patch = numbers.getOrElse(2) { 0 }
     )
+}
+
+/**
+ * Whether the update dialog should be shown for the release that was found.
+ *
+ * The automatic check can run on every launch now, so a reader who dismissed
+ * the notice with "Más tarde" would be greeted by the same dialog every time
+ * they open the app. The dismissal is remembered for that version only: a
+ * newer release is news again, and a manual check always shows it, because
+ * that is the reader asking for it.
+ */
+internal fun shouldShowUpdateDialog(
+    releaseVersion: String,
+    currentVersion: String,
+    dismissedVersion: String?,
+    manual: Boolean
+): Boolean {
+    if (!isNewerVersion(releaseVersion, currentVersion)) return false
+    if (manual) return true
+    return dismissedVersion != releaseVersion
 }
 
 /** True only when [latest] is a strictly newer numeric version than [current]. */
@@ -281,7 +373,7 @@ internal fun shouldCheckForUpdate(
     lastCheckEpochMs: Long,
     nowEpochMs: Long,
     force: Boolean,
-    interval: UpdateCheckInterval = UpdateCheckInterval.DAILY
+    interval: UpdateCheckInterval = UpdateCheckInterval.FREQUENT
 ): Boolean {
     if (force) return true
     val intervalMs = interval.intervalMs ?: return false

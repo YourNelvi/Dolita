@@ -116,7 +116,9 @@ import com.example.erp.data.ShareImage
 import com.example.erp.data.ThemeMode
 import com.example.erp.data.UpdateCheckResult
 import com.example.erp.data.UpdateChecker
+import com.example.erp.data.UpdatePreferences
 import com.example.erp.data.parseSha256Digest
+import com.example.erp.data.shouldShowUpdateDialog
 import com.example.erp.data.updateApkFileName
 import com.example.erp.ui.components.CalculatorCard
 import com.example.erp.ui.components.CreatorDialog
@@ -376,6 +378,9 @@ fun DolarScreen(
     val updateChecker = remember(context, inPreview) {
         if (inPreview) null else UpdateChecker(context.applicationContext)
     }
+    // Where the update state lives between launches: the ETag of the last
+    // answer and the version the reader dismissed.
+    val updatePreferences = remember(context) { UpdatePreferences(context) }
     val apkDownloader = remember(context, inPreview) {
         if (inPreview) null else ApkDownloader(context.applicationContext)
     }
@@ -401,6 +406,18 @@ fun DolarScreen(
 
             when (result) {
                 is UpdateCheckResult.Available -> {
+                    // The automatic check can run on every launch, so a notice
+                    // the reader already sent away must not come back on its
+                    // own. A manual check always shows it: that is the reader
+                    // asking for it.
+                    val offer = shouldShowUpdateDialog(
+                        releaseVersion = result.update.versionName,
+                        currentVersion = BuildConfig.VERSION_NAME,
+                        dismissedVersion = updatePreferences.dismissedVersion,
+                        manual = force
+                    )
+                    if (!offer) return@launch
+
                     // A new answer invalidates whatever the previous one left
                     // behind: an APK for 1.30.0 must never be offered for 1.31.0.
                     downloadState = UpdateDownloadState.Idle
@@ -427,6 +444,9 @@ fun DolarScreen(
     }
 
     fun dismissUpdateDialog() {
+        // "Más tarde" is remembered for that version: the automatic check
+        // must not greet the reader with the same notice on every launch.
+        availableUpdate?.versionName?.let { updatePreferences.dismissedVersion = it }
         downloadJob?.cancel()
         downloadState = UpdateDownloadState.Idle
         pendingInstallPath = ""

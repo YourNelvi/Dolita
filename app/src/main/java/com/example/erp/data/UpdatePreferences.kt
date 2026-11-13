@@ -10,17 +10,28 @@ import android.content.Context
  * check behind their back.
  */
 enum class UpdateCheckInterval(val storageKey: String) {
-    DAILY("daily"),
+    /**
+     * The storage key stays "daily" even though the window is no longer a
+     * day: changing it would reset every existing install to the default and
+     * silently undo the choice the user already made.
+     */
+    FREQUENT("daily"),
     WEEKLY("weekly"),
     NEVER("never");
 
     /**
      * Milliseconds between automatic checks, or null when the app should never
      * check without being asked.
+     *
+     * The frequent window is two hours rather than a day because a check that
+     * finds nothing used to burn the whole day: a release published after the
+     * user's last look stayed invisible until the next morning. Two hours is
+     * the floor that keeps the traffic sane; the request itself is a
+     * conditional one that GitHub does not charge for when nothing changed.
      */
     val intervalMs: Long?
         get() = when (this) {
-            DAILY -> 24L * 60L * 60L * 1000L
+            FREQUENT -> 2L * 60L * 60L * 1000L
             WEEKLY -> 7L * 24L * 60L * 60L * 1000L
             NEVER -> null
         }
@@ -28,7 +39,7 @@ enum class UpdateCheckInterval(val storageKey: String) {
     /** The value shown at the end of the settings row. */
     val label: String
         get() = when (this) {
-            DAILY -> "Cada día"
+            FREQUENT -> "Cada 2 horas"
             WEEKLY -> "Cada semana"
             NEVER -> "Solo manual"
         }
@@ -36,7 +47,8 @@ enum class UpdateCheckInterval(val storageKey: String) {
     /** What the choice means, in one line, under the row title. */
     val description: String
         get() = when (this) {
-            DAILY -> "Al abrir la app, una vez por día"
+            FREQUENT -> "Al abrir la app, con un mínimo de 2 horas entre búsquedas. " +
+                "Solo pregunta si hay algo nuevo."
             WEEKLY -> "Al abrir la app, una vez por semana"
             NEVER -> "Solo cuando tocás «Buscar actualización»"
         }
@@ -49,7 +61,7 @@ enum class UpdateCheckInterval(val storageKey: String) {
          * unreadable preference must not silently turn update checks off.
          */
         fun fromStorage(value: String?): UpdateCheckInterval =
-            entries.firstOrNull { it.storageKey == value } ?: DAILY
+            entries.firstOrNull { it.storageKey == value } ?: FREQUENT
     }
 }
 
@@ -76,9 +88,23 @@ class UpdatePreferences(context: Context) {
             preferences.edit().putLong(KEY_LAST_CHECK, value).apply()
         }
 
+    /**
+     * The release the reader dismissed with "Más tarde".
+     *
+     * Without this, a check that runs on every launch would greet the reader
+     * with the same dialog every time they open the app until they update.
+     * A newer version clears it: the notice is about that version.
+     */
+    var dismissedVersion: String?
+        get() = preferences.getString(KEY_DISMISSED_VERSION, null)
+        set(value) {
+            preferences.edit().putString(KEY_DISMISSED_VERSION, value).apply()
+        }
+
     private companion object {
         const val PREFS_NAME = "update_check_prefs"
         const val KEY_LAST_CHECK = "last_successful_check_epoch_ms"
         const val KEY_INTERVAL = "check_interval"
+        const val KEY_DISMISSED_VERSION = "dismissed_version"
     }
 }
