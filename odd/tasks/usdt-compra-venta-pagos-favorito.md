@@ -368,7 +368,11 @@ Reglas:
     y el teclado no aparece; `input text` no escribe nada en el campo; la
     flechita abre la lista; al elegir "0102 · Banco de Venezuela (BDV)" el
     campo se completa y "Guardar" se habilita.
-  - Commit `820976c`, pusheado. Queda para el próximo release.
+  - El usuario pidió además que tocar el campo mismo abra la lista (y no solo
+    la flechita): el wrapper del campo es clickeable, así que las dos entradas
+    funcionan y el teclado sigue sin aparecer.
+  - Commits: `820976c` (campo sin escritura) + `50b6d4f` (el campo abre la
+    lista), pusheados. Queda para el próximo release.
 
 ## Log
 
