@@ -651,7 +651,12 @@ private fun BankField(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit
 ) {
-    BoxWithConstraints {
+    BoxWithConstraints(
+        // The whole field opens the catalog, not only the arrow: a text area
+        // that ignores the tap reads as a broken control. The arrow keeps
+        // being the obvious hint of where the list comes from.
+        modifier = Modifier.clickable { onExpandedChange(true) }
+    ) {
         val menuWidth = maxWidth
         OutlinedTextField(
             value = banco,
@@ -680,7 +685,8 @@ private fun BankField(
                 disabledSupportingTextColor = MaterialTheme.colorScheme.onSurfaceVariant
             ),
             trailingIcon = {
-                // The arrow is the only way in: it opens the catalog.
+                // The arrow opens the catalog too, and it is the hint that
+                // says the field is a picker and not a place to type.
                 IconButton(onClick = { onExpandedChange(true) }) {
                     Icon(
                         imageVector = Icons.Rounded.ArrowDropDown,
