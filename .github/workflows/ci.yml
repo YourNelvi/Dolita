@@ -48,7 +48,7 @@ jobs:
       # signing key, which is deliberately not in this repository and must never
       # be. This job can therefore never produce a shippable artifact.
       - name: Upload debug APK as a build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
