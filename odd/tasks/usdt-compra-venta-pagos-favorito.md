@@ -373,6 +373,30 @@ Reglas:
     funcionan y el teclado sigue sin aparecer.
   - Commits: `820976c` (campo sin escritura) + `50b6d4f` (el campo abre la
     lista), pusheados. Queda para el próximo release.
+- [x] T18 — El aviso de actualización aparece sin ir a Ajustes (S7): la
+  búsqueda automática mira cada 2 horas y no gasta la cuota de la API.
+  - Diagnóstico: la ventana automática era de 24 horas y se quemaba con
+    CUALQUIER chequeo exitoso, incluso uno que no encontraba nada. Si el
+    usuario abría la app antes de publicarse el release, la app no volvía a
+    mirar hasta el día siguiente: el aviso solo aparecía si buscaba a mano
+    en Ajustes.
+  - Solución: la pregunta barata ("qué versión está publicada") se hace
+    contra la página de releases, que responde con un redirect y NO consume
+    la cuota de la API (60/hora/IP, compartida por los usuarios del mismo
+    operador). La API solo se consulta cuando hay algo nuevo, para traer
+    las notas, el APK y su digest. La ventana pasa a 2 horas.
+  - "Más tarde" recuerda la versión descartada: la comprobación automática no
+    vuelve a mostrar el mismo aviso en cada apertura; la manual sí.
+  - El ETag se descartó porque se comprobó contra la API real que ignora
+    `If-None-Match` en ese endpoint y responde 200 gastando cuota igual.
+  - Evidencia: 444 tests unitarios, 0 fallos (5 casos nuevos de
+    `shouldShowUpdateDialog`, 2 de `versionFromReleaseRedirect`, la ventana
+    de 2 horas). Verificado en el Redmi con un build temporal en 1.31.0: al
+    abrir la app aparece "Actualización disponible · Dolita 1.31.1" sin
+    tocar Ajustes; tras descartarla, la búsqueda manual de Ajustes la vuelve
+    a mostrar. APK final 49.563.286 bytes, SHA-256
+    `8bf1d6d51304a3c689ed82eae77a3f41a9d4d8ac218502071d3675d07b9e576d`.
+  - Commit `1957b9b`, pusheado. Queda para el próximo release.
 
 ## Log
 
