@@ -43,6 +43,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -64,6 +65,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.erp.data.PaymentProfile
 import com.example.erp.data.PaymentProfileType
+import com.example.erp.data.isKnownVenezuelanBank
 import com.example.erp.data.venezuelanBanks
 import com.example.erp.ui.theme.accentColor
 import com.example.erp.ui.theme.cardBadgeColor
@@ -452,7 +454,9 @@ private fun ProfileForm(
     val nombreValid = nombre.isNotBlank()
     val telefonoValid = telefono.count { it.isDigit() } >= 10
     val documentoValid = documentoNumero.isNotBlank()
-    val bancoValid = banco.isNotBlank()
+    // The bank has to be one of the real ones: the field is a picker, so
+    // anything else is a name someone typed by hand.
+    val bancoValid = isKnownVenezuelanBank(banco)
     val cuentaValid = numeroCuenta.isNotBlank()
 
     val formValid = when (type) {
@@ -651,12 +655,32 @@ private fun BankField(
         val menuWidth = maxWidth
         OutlinedTextField(
             value = banco,
-            onValueChange = onBancoChange,
+            // The value only ever comes from the catalog below. The field
+            // cannot be typed into: a half-written bank name is a payment
+            // that never arrives.
+            onValueChange = {},
+            enabled = false,
             label = { Text("Banco") },
             isError = showError,
-            supportingText = supportingError(showError, "Escribe o elige un banco."),
+            supportingText = supportingError(showError, "Elegí un banco de la lista."),
             singleLine = true,
+            // Disabled is what keeps the keyboard away and the cursor out of
+            // the field. The colors are restored so it reads as a normal
+            // field that happens to be filled by a picker, not as something
+            // broken.
+            colors = OutlinedTextFieldDefaults.colors(
+                disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                disabledBorderColor = if (showError) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.outline
+                },
+                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                disabledTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                disabledSupportingTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+            ),
             trailingIcon = {
+                // The arrow is the only way in: it opens the catalog.
                 IconButton(onClick = { onExpandedChange(true) }) {
                     Icon(
                         imageVector = Icons.Rounded.ArrowDropDown,

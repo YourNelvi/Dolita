@@ -18,8 +18,9 @@ data class VenezuelanBank(
 /**
  * The complete Pago Móvil bank catalog, sorted by code.
  *
- * This is a shortcut for the bank field, never a constraint: the field stays
- * free text so a bank that is missing here — or a new one — can still be typed.
+ * This is the ONLY source of the bank field: the picker writes a [label] from
+ * here and the field cannot be typed into, because a half-written bank name
+ * is a payment that never arrives.
  */
 val venezuelanBanks: List<VenezuelanBank> = listOf(
     VenezuelanBank("0102", "Banco de Venezuela (BDV)"),
@@ -49,3 +50,19 @@ val venezuelanBanks: List<VenezuelanBank> = listOf(
     VenezuelanBank("0178", "N58 Banco Digital"),
     VenezuelanBank("0191", "Banco Nacional de Crédito (BNC)")
 )
+
+/**
+ * Whether [value] identifies a bank in the catalog.
+ *
+ * The label ("0134 · Banesco Banco Universal") is what the picker writes, but
+ * a bare code ("0134") also identifies the bank: profiles saved before the
+ * field became a picker kept whatever the user had typed, and the code is the
+ * part a transfer actually needs. Free text is not accepted, because the whole
+ * point of the picker is that the bank is one of the real ones.
+ */
+fun isKnownVenezuelanBank(value: String): Boolean {
+    val trimmed = value.trim()
+    if (trimmed.isEmpty()) return false
+    if (venezuelanBanks.any { it.label == trimmed }) return true
+    return trimmed.matches(Regex("01\\d{2}")) && venezuelanBanks.any { it.code == trimmed }
+}

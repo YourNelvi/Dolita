@@ -1,6 +1,7 @@
 package com.example.erp.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -47,5 +48,35 @@ class VenezuelanBanksTest {
             "Banesco Banco Universal",
             venezuelanBanks.first { it.code == "0134" }.name
         )
+    }
+
+    @Test
+    fun `a label from the catalog is a known bank`() {
+        assertTrue(isKnownVenezuelanBank("0134 · Banesco Banco Universal"))
+    }
+
+    @Test
+    fun `a bare code is a known bank`() {
+        // Profiles saved before the field became a picker kept whatever the
+        // user had typed, and the code is the part a transfer actually needs.
+        assertTrue(isKnownVenezuelanBank("0134"))
+        assertTrue(isKnownVenezuelanBank(" 0102 "))
+    }
+
+    @Test
+    fun `a free text bank is not a known bank`() {
+        assertFalse(isKnownVenezuelanBank("Banesco"))
+        assertFalse(isKnownVenezuelanBank("el de mi tia"))
+    }
+
+    @Test
+    fun `a code that is not in the catalog is not a known bank`() {
+        assertFalse(isKnownVenezuelanBank("9999"))
+    }
+
+    @Test
+    fun `an empty bank is not a known bank`() {
+        assertFalse(isKnownVenezuelanBank(""))
+        assertFalse(isKnownVenezuelanBank("   "))
     }
 }
