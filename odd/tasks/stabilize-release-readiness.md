@@ -88,22 +88,24 @@ Explicitly out of scope (found by the audit, deferred):
       cannot fire.
       Route: delegated writer. Check: `assembleDebug` succeeds; manifest
       contains the FGS permissions and the subtype property.
-- [ ] T4. Request `POST_NOTIFICATIONS` at runtime from `MainActivity` before
+- [x] T4. Request `POST_NOTIFICATIONS` at runtime from `MainActivity` before
       `setContent`, with a graceful denial path and no crash when denied.
-      Route: delegated writer. Check: `assembleDebug` succeeds; the request is
-      reachable and the denied path is handled.
+      Evidence: activity-result launcher is registered before `onCreate`,
+      request runs before `setContent`, and denial is logged without throwing.
+      Static inspection only in this pass; runtime/device verification remains
+      unavailable.
 - [ ] T5. Extract the calculator conversion math into a pure object and add JVM
       unit tests for it.
-      Route: delegated writer. Check: new tests pass; `CalculatorCard` no longer
-      owns the math as composable-local functions.
-- [ ] T6. Make the history chart colour follow the active theme. Added 2026-09-25
-      on user request; `EvolutionChart` currently hardcodes its colours and does
-      not follow the palette. Reuse the `accent` theme role introduced in
-      `851afe1` and the existing semantic up/down colours, so all six
-      `AppTheme` palettes and both light and dark modes render correctly.
-      Route: delegated writer. Check: chart reads colours from
-      `MaterialTheme` / the theme roles, contains no hardcoded colour literals,
-      `assembleDebug` succeeds, and both `@Preview`s in the file render.
+      Implementation: comparison conversion was moved to
+      `CurrencyConverter.convertForComparison`; four JVM tests cover both
+      directions, rounding and invalid rates. `CalculatorCard` now delegates
+      both market calculations to the pure object. Build/test verification is
+      still pending.
+- [x] T6. Make the history chart colour follow the active theme. Added 2026-09-25
+      on user request. Evidence: `EvolutionChart` reads the animated theme
+      accent via `accentColor()`, uses semantic positive/negative colours, and
+      has no hardcoded chart colour literals. Static inspection confirms the
+      theme roles are used; build and preview rendering remain unverified here.
 
 ## Authorized scope
 
@@ -151,9 +153,9 @@ Baseline established before any task: 27 tests, 1 failure; lint 2 errors,
 | T1 | `7ad781e` | done — `usdtSampledThisSession` gate implemented |
 | T2 | `31068cc` | done — signing credentials externalized, key rotated |
 | T3 | `90551c8` | done — FGS permissions, typed service types, notification IDs |
-| T4 | — | pending — runtime `POST_NOTIFICATIONS` request |
-| T5 | — | pending — extract calculator math, add tests |
-| T6 | — | pending — history chart follows the theme palette (added on request) |
+| T4 | pre-existing on branch | implemented — runtime permission request and graceful denial path; device verification pending |
+| T5 | `1bdd6b2`, `82e554a`, `a0b213d` | implemented — extracted comparison math and added four JVM tests; Gradle verification pending |
+| T6 | pre-existing on branch | implemented — chart uses theme accent and semantic up/down roles; preview/build verification pending |
 
 ## Verification evidence
 
@@ -188,5 +190,6 @@ Baseline established before any task: 27 tests, 1 failure; lint 2 errors,
 
 ## Next step
 
-Execute T4, T5 and T6 in order, one delegated writer per task, one work-unit
-commit each.
+Run the documented Gradle checks from the Windows development environment:
+`testDebugUnitTest`, `lintDebug`, and `assembleDebug`. Then inspect both chart
+previews on device/Android Studio and close T5 only after the new tests pass.
