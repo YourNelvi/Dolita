@@ -29,6 +29,18 @@ Con la app abierta, **Ajustes → Actualizaciones** permite buscar una versión 
 
 > No requiere cuenta ni registro.
 
+### El aviso de Play Protect
+
+Dolita no está en la Play Store: se distribuye desde los releases de GitHub. Por eso
+**Play Protect escanea el APK y puede avisar que "la app puede ser dañina" o que no la
+reconoce**. Ese aviso no dice que el APK esté mal: dice que la app no viene de una fuente
+que Google conoce. El APK se puede verificar: el release publica su SHA-256 y la app
+comprueba ese valor antes de instalar.
+
+Para instalarla, elegí **"Instalar de todos modos"** (o "Detalles → Instalar de todos
+modos"). Y recordá que la firma es la misma desde la 1.22.1, así que una actualización
+nunca pide desinstalar: no se borran ni los perfiles de pago ni las preferencias.
+
 ## Stack tecnológico
 
 | Capa | Tecnología | Versión |

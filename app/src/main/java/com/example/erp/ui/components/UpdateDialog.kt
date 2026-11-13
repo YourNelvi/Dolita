@@ -98,6 +98,18 @@ fun UpdateDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    // Play Protect scans every APK that is not installed from
+                    // the Play Store, and it warns on apps Google has never
+                    // seen published there. Saying so here saves the reader
+                    // the fear of a malware warning that is only about the
+                    // distribution channel.
+                    Text(
+                        text = "Si Android muestra un aviso de Play Protect, " +
+                            "elegí \"Instalar de todos modos\": Dolita se distribuye " +
+                            "fuera de la Play Store.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
                 when (downloadState) {
