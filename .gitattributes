@@ -1,0 +1,2 @@
+# Keep this development helper out of GitHub's language breakdown.
+scripts/prepare-update-test.ps1 linguist-detectable=false
