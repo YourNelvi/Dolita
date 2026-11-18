@@ -36,7 +36,7 @@ jobs:
           java-version: "25"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # No .gitignore'd local.properties here on purpose. Gradle regenerates it
       # from ANDROID_HOME, and writing a stub with a hardcoded SDK path is how
