@@ -934,3 +934,18 @@ Publicación 1.31.2:
   instala encima. En el Redmi: Ajustes muestra "Versión 1.31.2" y el aviso de
   actualización ya no aparece porque no hay nada más nuevo.
 
+Release publicado:
+
+- `798c867` feat: aviso de actualizacion en la home, marcos AMOLED y alta
+  precision (12 archivos, +561/−17).
+- `16c2de7` chore: bump version to 1.31.2, con el tag `v1.31.2` encima.
+- Rama `stabilize-release-readiness` y tag pusheados a `github`.
+- Release público: https://github.com/YourNelvi/Dolita/releases/tag/v1.31.2
+  con el asset `Dolita-1.31.2.apk` (49.579.670 bytes, `digest`
+  `sha256:a0b38cb3…3a9fd`, igual al APK local).
+- El asset se subió primero como `app-release.apk` porque `gh` con
+  `archivo#etiqueta` cambia la etiqueta pero no el nombre; se reemplazó por
+  `Dolita-1.31.2.apk` para que coincida con las versiones anteriores.
+- `master` sigue en `a4478de`: el fast-forward de la rama y la limpieza del APK
+  temporal quedan a decisión del usuario.
+
