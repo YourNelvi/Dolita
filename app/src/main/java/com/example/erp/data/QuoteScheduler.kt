@@ -15,6 +15,7 @@ object QuoteScheduler {
     private const val MORNING_WORK_NAME = "daily_quotes_fetch"
     private const val EVENING_WORK_NAME = "evening_next_rate_fetch"
     private const val USDT_WORK_NAME = "hourly_usdt_fetch"
+    private const val UPDATE_WORK_NAME = "update_release_check"
 
     private val zone: ZoneId get() = ZoneId.systemDefault()
 
@@ -168,11 +169,39 @@ object QuoteScheduler {
         )
     }
 
+    /**
+     * Arms the background look for a published release.
+     *
+     * Every two hours, with no battery gate: the check is one small request
+     * to the releases page and it does not spend the API quota. The worker
+     * only remembers WHICH version is published; the notice belongs to the
+     * home screen, which offers it when the app opens.
+     */
+    fun scheduleUpdateChecks(context: Context) {
+        val request = PeriodicWorkRequest.Builder(
+            UpdateCheckWorker::class.java,
+            2L, TimeUnit.HOURS,
+            15L, TimeUnit.MINUTES
+        )
+            .setConstraints(bcvConstraints)
+            .addTag(UPDATE_WORK_NAME)
+            .build()
+
+        WorkManager.getInstance(context)
+            .enqueueUniquePeriodicWork(
+                UPDATE_WORK_NAME,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                request
+            )
+        Log.d("QuoteScheduler", "Scheduled the update check, every 2 hours")
+    }
+
     fun cancelScheduledFetch(context: Context) {
         val workManager = WorkManager.getInstance(context)
         workManager.cancelUniqueWork(MORNING_WORK_NAME)
         workManager.cancelUniqueWork(EVENING_WORK_NAME)
         workManager.cancelUniqueWork(USDT_WORK_NAME)
+        workManager.cancelUniqueWork(UPDATE_WORK_NAME)
         Log.d("QuoteScheduler", "Cancelled all scheduled fetches")
     }
 }

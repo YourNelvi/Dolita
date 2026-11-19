@@ -1,7 +1,7 @@
 # Feature: USDT compra/venta, countdown, perfiles de pago y moneda favorita
 
 Branch: `stabilize-release-readiness`
-Delivery: sin commits por ahora (el usuario no los pidió; el README sigue sin commitear)
+Delivery: release 1.31.2 en preparación (commit + tag `v1.31.2` + APK adjunto)
 Test runner: `./gradlew testDebugUnitTest`
 
 ## Objective
@@ -156,6 +156,13 @@ Agregar cuatro cosas a Dolita:
 - El bump de versión (`1.32.0`, `versionCode` +1) y el release se hacen recién
   cuando el usuario lo pida. `app/build.gradle.kts` sigue siendo el único lugar
   donde se escribe una versión.
+- El aviso de actualización se muestra **en la pantalla de inicio** de la app y
+  **no** como notificación, mientras la app sigue consultando en segundo plano
+  para saber si hay una versión nueva. Pedido del usuario:
+
+  > "que solo aparezca en la pagina de inicio, que no mande la notificacion,
+  > pero que este consultando para saber si esta actualizando, lo habias puesto
+  > cada cuanto tiempo?"
 
 ### S8 — Tarjeta compacta, compartir como imagen y retiro de Zelle
 
@@ -255,6 +262,25 @@ Reglas:
   moneda, el halo, el wordmark y "Actualizando la tasa".
 - Checks: `CreatorPromptTest` con primer día, segunda apertura, mismo día y
   día nuevo; suite unitaria; `assembleRelease`; captura en el dispositivo.
+
+### S11 — Marcos visibles del panel de sugerencias con AMOLED
+
+Pedido del usuario (cita textual):
+
+> "sabes que el panel de sugerencias sale como que muy opaco con la opcion de
+> amoled sera que le puedes poner como unos marcos asi como los del tema para
+> que se logre diferenciar"
+
+Reglas:
+
+- El panel flotante de "Monto rápido" y las pastillas de montos llevan un marco
+  visible, con la misma voz visual que el resto de las tarjetas de la app.
+- En AMOLED todas las superficies son `#000000`, así que el hairline del tema
+  (7% de blanco) no se ve: el marco del panel y el de las pastillas no
+  seleccionadas se refuerzan ahí, porque el marco es lo único que separa la
+  superficie flotante del fondo.
+- Checks: suite unitaria, `assembleRelease` y captura en el dispositivo con la
+  variante AMOLED activa.
 
 ## Tasks
 
@@ -397,6 +423,37 @@ Reglas:
     a mostrar. APK final 49.563.286 bytes, SHA-256
     `8bf1d6d51304a3c689ed82eae77a3f41a9d4d8ac218502071d3675d07b9e576d`.
   - Commit `1957b9b`, pusheado. Queda para el próximo release.
+- [x] T18b — El aviso de actualización vive en la pantalla de inicio (S7): la
+  búsqueda automática mira cada 2 horas y no gasta la cuota de la API.
+  - Reabierta el 2026-11-13 por el cambio de requisito: el aviso se muestra en
+    la pantalla de inicio y **no** se manda notificación; la app sigue
+    consultando en segundo plano cada 2 horas.
+  - Implementado: `UpdateCheckWorker` queda cada 2 horas y solo recuerda la
+    versión publicada (`knownNewerVersion`); la home la ofrece al abrir, sin
+    esperar la ventana del chequeo; se borran el canal de notificación, el
+    extra del tap y el `forceUpdateCheck`. La ventana del chequeo al abrir la
+    app sigue en 2 horas (`UpdateCheckInterval.FREQUENT`).
+  - Evidencia: suite unitaria 453 tests, 0 fallos (3 casos nuevos de
+    `hasNewerVersionKnown`).
+  - Verificado en el Redmi `c3228f2a` el 2026-11-19 con un build temporal
+    1.31.0 que fuerza el chequeo al abrir (la ventana de 2 h ya estaba
+    quemada): el diálogo "Actualización disponible · Dolita 1.31.1" sale en la
+    pantalla de inicio sin tocar Ajustes, con "Tenés instalada la versión
+    1.31.0", tamaño del APK, aviso de SHA-256 y Play Protect, y las notas del
+    release. No se publica ninguna notificación: `dumpsys notification` no
+    muestra canal de actualizaciones y el único aviso activo es el horario de
+    USDT. El build temporal se revirtió antes de publicar.
+  - Sin commit, sin push y sin bump de versión.
+- [x] T19 — Marcos visibles del panel de sugerencias con AMOLED (S11): el
+  panel flotante de "Monto rápido" y las pastillas llevan un marco visible.
+  - Implementado: `floatingFrameColor()` en el tema (hairline del tema, más
+    fuerte en AMOLED, donde todas las superficies son `#000000`) y el local
+    `LocalIsAmoledTheme`; el panel y las pastillas no seleccionadas lo usan.
+  - Evidencia: suite unitaria 453 tests, 0 fallos. Verificado en el Redmi
+    `c3228f2a` el 2026-11-19 con Negro puro (AMOLED) activo: el panel "Monto
+    rápido" y las pastillas 2/5/10/20/50 se distinguen del fondo negro por su
+    marco, que antes desaparecía.
+  - Sin commit, sin push y sin bump de versión.
 
 ## Log
 
@@ -718,4 +775,162 @@ Verificación:
   `ea977e91e997afbac6a233de6f963e00ee74f9fa4c23ed94e332af22bb945b47`.
 - El avatar real quedó en `app/src/main/res/drawable/creator_avatar.png`
   (copia de `Escritorio/Nueva carpeta/imagen del perfil.png`).
+
+### L10 — Aviso sin notificación y marcos del panel de sugerencias (2026-11-13)
+
+Pedido del usuario:
+
+> "puedes incluir que mande un notificaion?"
+
+> "que solo aparezca en la pagina de inicio, que no mande la notificacion, pero
+> que este consultando para saber si esta actualizando, lo habias puesto cada
+> cuanto tiempo?"
+
+> "sabes que el panel de sugerencias sale como que muy opaco con la opcion de
+> amoled sera que le puedes poner como unos marcos asi como los del tema para
+> que se logre diferenciar"
+
+Decisiones:
+
+- La primera idea (una notificación que al tocarla abría la app con el chequeo
+  forzado) se descartó: el usuario pidió que el aviso viva en la pantalla de
+  inicio. Un aviso de actualización interrumpe a quien no pidió nada, y la app
+  es el lugar donde la versión se puede explicar e instalar.
+- La consulta en segundo plano se conserva: el worker `UpdateCheckWorker` corre
+  cada 2 horas y solo recuerda la versión publicada (`knownNewerVersion`). La
+  home la ofrece al abrir, sin esperar la ventana del chequeo. La API de
+  GitHub no se toca en el worker: la pregunta barata sigue siendo el redirect
+  de la página de releases.
+- La ventana del chequeo al abrir la app sigue en 2 horas
+  (`UpdateCheckInterval.FREQUENT`); el storage key sigue siendo `"daily"` para
+  no resetear la elección ya guardada.
+- El marco del panel de sugerencias: en AMOLED todas las superficies son
+  `#000000`, así que el hairline del tema (7% de blanco) desaparece. Se agrega
+  `floatingFrameColor()` al tema (hairline del tema, reforzado en AMOLED) y se
+  aplica al panel flotante y a las pastillas no seleccionadas.
+
+Implementación:
+
+- `UpdateCheckWorker`: consulta y recuerda; ya no notifica.
+- `UpdatePreferences`: `notifiedVersion` → `knownNewerVersion`.
+- `UpdateChecker`: se saca `shouldNotifyUpdate`; entra `UpdateCheckTrigger`
+  (Automatic / Background / Manual) y `hasNewerVersionKnown`.
+- `NotificationHelper`: se borran el canal de actualizaciones, la notificación y
+  el extra del tap.
+- `MainActivity` y `DolarScreen`: se borra el camino de la notificación; el
+  diálogo se ofrece desde la home.
+- `Theme.kt`: `LocalIsAmoledTheme`, `isAmoledTheme()` y `floatingFrameColor()`.
+- `CalculatorCard.kt`: el panel y las pastillas usan el marco visible.
+
+Evidencia:
+
+- Suite unitaria 447 tests, 0 fallos (3 casos nuevos de
+  `hasNewerVersionKnown`, 5 de notificación retirados).
+- El worker respeta el intervalo elegido en Ajustes: usa el mismo
+  `shouldCheckForUpdate` y el mismo timestamp que el chequeo de la app, así que
+  "cada semana" se consulta una vez por semana y un chequeo reciente no se
+  repite.
+- Pendiente: la captura en el dispositivo (el Redmi se desconectó del USB) y
+  el release 1.31.2, que sigue sin autorización del usuario.
+- El mirror de este documento en Engram sigue pendiente: el servidor resuelve
+  el proyecto con la ruta (`invalid_project`) y rechaza las escrituras.
+- Sin commit, sin push y sin bump de versión.
+
+### L11 - La alta precisión no llegaba a la calculadora (2026-11-16)
+Pedido del usuario: "revisa lo de la alta precision, ya que en la calculadora no
+se muestra".
+
+Causa: `CalculatorCard` no recibía `highPrecision` —el call site en
+`DolarScreen.kt` lo omitía— y su `formatCalc()` privado fijaba
+`setScale(2, RoundingMode.HALF_UP)`. La tarjeta destacada, las filas de
+cotización y los dos textos de compartir ya respetaban el ajuste; la calculadora
+no. Por eso en la misma pantalla se leía `Bs 914,0218` arriba y
+`1 USD = 914,02 Bs` en la calculadora.
+
+Implementación:
+
+- `CalculatorCard.kt`: `formatCalc(value, fracDigits)` (ahora `internal`) usa
+  los decimales que recibe; `CalculatorCard` acepta `highPrecision` y calcula
+  `rateDigits = if (highPrecision) 4 else 2`.
+- `DolarScreen.kt`: la llamada pasa `highPrecision = highPrecision`.
+- `CalculatorRateFormatTest.kt`: 4 tests nuevos (2 decimales por defecto, 4 con
+  alta precisión, redondeo desde el quinto decimal, separador de miles).
+
+Evidencia:
+
+- RED observado: el test no compilaba contra la API anterior ("Cannot access
+  'fun formatCalc(value: Double)': it is private in file").
+- GREEN: 453 tests, 0 fallos.
+- `assembleRelease` verde (1.31.1, versionCode 1019016); el APK quedó instalado
+  en el Redmi.
+- Confirmado en el Redmi `c3228f2a` el 2026-11-19: con "Alta precisión" activa
+  la tarjeta muestra `Bs 917,7751`, promedio `Bs 917,7751`, anterior
+  `Bs 916,6477`, cambio `+1,1274 Bs` y la calculadora `1 USD = 917,7751 Bs`.
+  Con el switch apagado vuelve a dos decimales.
+- Sin commit, sin push y sin bump de versión.
+
+### L12 - Verificación en dispositivo pendiente y entorno de Gradle (2026-11-19)
+
+Pedido del usuario: "continua lo de la sesion anterior".
+
+Hecho:
+
+- Confirmado en el Redmi `c3228f2a` el arreglo de alta precisión (L11) y los
+  marcos AMOLED del panel "Monto rápido" (T19).
+- Suite unitaria: 453 tests, 0 fallos.
+- Build temporal 1.31.0 (`versionCode 1019015`) compilado para forzar el aviso
+  de actualización en la home, porque el teléfono ya corre la 1.31.1 y no hay
+  nada más nuevo publicado. Antes de instalarlo el teléfono se desconectó del
+  USB. El APK temporal quedó en
+  `%TEMP%\opencode\Dolita-1.31.0-temp.apk` y `app/build.gradle.kts` volvió a
+  `1019016` / `"1.31.1"` sin commitear.
+- El entorno de Gradle de esta máquina no arranca con el JBR del kotlin-lsp
+  (`jlink` no existe ahí): el daemon lo elige porque
+  `gradle/gradle-daemon-jvm.properties` pide Java 25 y ese JBR es el único
+  detectado. La forma que funciona:
+
+  ```powershell
+  $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+  .\gradlew.bat "-Porg.gradle.java.installations.auto-detect=false" `
+    "-Porg.gradle.java.installations.paths=C:\Program Files\Android\Android Studio\jbr" `
+    testDebugUnitTest
+  ```
+
+Pendiente:
+
+- Decisión del usuario: commit, push y bump a 1.32.0.
+
+### L13 - Aviso capturado en la home y release 1.31.2 (2026-11-19)
+
+Pedido del usuario:
+
+> "pero ya la app estara en la 1.31.2 para hacer el git de github revisa antes
+> de publicar"
+
+Captura de T18b:
+
+- El build temporal de 1.31.0 con la versión real del repo como versionCode
+  (1019016) entra como actualización, sin el bloqueo de downgrade de Android.
+- La ventana de 2 horas ya estaba quemada por el chequeo de las 12:34, así que
+  el build temporal forzó el chequeo al abrir (una línea, revertida después).
+- En el Redmi el diálogo "Actualización disponible · Dolita 1.31.1" aparece
+  sobre la pantalla de inicio sin tocar Ajustes: "Tenés instalada la versión
+  1.31.0", tamaño del APK, aviso de SHA-256 y Play Protect, notas del release,
+  "Ver release", "Descargar" y "Más tarde".
+- Ninguna notificación: `dumpsys notification` no tiene canal de
+  actualizaciones y el único aviso activo es el horario de USDT.
+
+Publicación 1.31.2:
+
+- `versionCode` 1019016 → 1019017 y `versionName` "1.31.1" → "1.31.2" en
+  `app/build.gradle.kts`, el único lugar donde se escribe la versión.
+- Esta versión arrastra: el aviso de actualización en la home sin notificación
+  (T18b), los marcos AMOLED del panel de sugerencias (T19) y la alta precisión
+  en la calculadora (L11).
+- Verificación: suite 453 tests, 0 fallos; `assembleRelease` verde; APK
+  49.579.670 bytes, SHA-256
+  `a0b38cb3e683edc61b80ec72e04478b9410f2c2d1eb22e27695102872f13a9fd`;
+  firmado con el mismo certificado que la 1.31.1 (`2c460f11…efe7c`), así que se
+  instala encima. En el Redmi: Ajustes muestra "Versión 1.31.2" y el aviso de
+  actualización ya no aparece porque no hay nada más nuevo.
 

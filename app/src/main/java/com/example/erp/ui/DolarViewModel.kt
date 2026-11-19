@@ -99,6 +99,7 @@ open class DolarViewModel @JvmOverloads constructor(
             historyStore.fetchAndPopulateHistorical()
             QuoteScheduler.scheduleDailyFetch(application)
             QuoteScheduler.scheduleHourlyUsdtFetch(application)
+            QuoteScheduler.scheduleUpdateChecks(application)
             load()
         }
     }

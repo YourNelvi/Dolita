@@ -26,6 +26,9 @@ val LocalIsDarkTheme = staticCompositionLocalOf { false }
 // The animated palette accent, published by ERPTheme. See accentColor().
 val LocalAccentColor = staticCompositionLocalOf { Color(0xFF00E676) }
 
+// True when the AMOLED variant is on, published by ERPTheme. See isAmoledTheme().
+val LocalIsAmoledTheme = staticCompositionLocalOf { false }
+
 enum class AppTheme(
     val lightPrimary: Long, val lightSecondary: Long, val lightTertiary: Long,
     val lightOnPrimary: Long, val lightOnSecondary: Long, val lightOnTertiary: Long,
@@ -208,6 +211,27 @@ fun cardBorderColor(): Color =
 fun cardBorder(): BorderStroke = BorderStroke(1.dp, cardBorderColor())
 
 /**
+ * True when the AMOLED variant is on.
+ *
+ * There every surface is #000000, so a floating element cannot separate
+ * itself from its container with a fill: only a frame does it.
+ */
+@Composable
+fun isAmoledTheme(): Boolean = LocalIsAmoledTheme.current
+
+/**
+ * Frame for a surface that has to stand out from its container.
+ *
+ * The hairline of the theme is 7% white, which reads on the tinted dark
+ * surfaces. On AMOLED every surface is #000000, so that hairline disappears
+ * and the floating panel merges with the background: the frame has to be
+ * stronger there, or the element it frames is not an element at all.
+ */
+@Composable
+fun floatingFrameColor(): Color =
+    if (isAmoledTheme()) Color.White.copy(alpha = 0.22f) else cardBorderColor()
+
+/**
  * Accent for primary numeric values / focus rings.
  *
  * The transition between palettes is animated ONCE in `ERPTheme` and published
@@ -292,6 +316,7 @@ fun ERPTheme(
     )
     CompositionLocalProvider(
         LocalIsDarkTheme provides isDark,
+        LocalIsAmoledTheme provides amoled,
         LocalAccentColor provides animatedAccent
     ) {
         MaterialTheme(

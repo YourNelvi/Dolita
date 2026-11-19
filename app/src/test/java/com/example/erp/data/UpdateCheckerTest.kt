@@ -320,4 +320,44 @@ class UpdateCheckerTest {
             versionFromReleaseRedirect("https://github.com/YourNelvi/Dolita/releases")
         )
     }
+
+    @Test
+    fun `a version the worker found is acted on only when it is newer`() {
+        assertTrue(hasNewerVersionKnown("1.31.2", "1.31.1"))
+    }
+
+    @Test
+    fun `a known version that is not newer is ignored`() {
+        assertFalse(hasNewerVersionKnown("1.31.1", "1.31.1"))
+        assertFalse(hasNewerVersionKnown("1.31.0", "1.31.1"))
+    }
+
+    @Test
+    fun `an unknown version is ignored`() {
+        assertFalse(hasNewerVersionKnown(null, "1.31.1"))
+        assertFalse(hasNewerVersionKnown("", "1.31.1"))
+        assertFalse(hasNewerVersionKnown("   ", "1.31.1"))
+    }
+
+    @Test
+    fun `a dismissed known version is not offered again`() {
+        assertFalse(
+            hasNewerVersionKnown(
+                knownVersion = "1.31.2",
+                installedVersion = "1.31.1",
+                dismissedVersion = "1.31.2"
+            )
+        )
+    }
+
+    @Test
+    fun `a known version that was not dismissed is offered`() {
+        assertTrue(
+            hasNewerVersionKnown(
+                knownVersion = "1.31.2",
+                installedVersion = "1.31.1",
+                dismissedVersion = "1.31.1"
+            )
+        )
+    }
 }

@@ -101,10 +101,25 @@ class UpdatePreferences(context: Context) {
             preferences.edit().putString(KEY_DISMISSED_VERSION, value).apply()
         }
 
+    /**
+     * The newest published version the background worker found.
+     *
+     * The worker only remembers it: the notice is shown in the home when the
+     * app opens, never as a notification. Remembering it is what lets the app
+     * offer the update the moment it opens, instead of waiting for the next
+     * scheduled check.
+     */
+    var knownNewerVersion: String?
+        get() = preferences.getString(KEY_KNOWN_NEWER_VERSION, null)
+        set(value) {
+            preferences.edit().putString(KEY_KNOWN_NEWER_VERSION, value).apply()
+        }
+
     private companion object {
         const val PREFS_NAME = "update_check_prefs"
         const val KEY_LAST_CHECK = "last_successful_check_epoch_ms"
         const val KEY_INTERVAL = "check_interval"
         const val KEY_DISMISSED_VERSION = "dismissed_version"
+        const val KEY_KNOWN_NEWER_VERSION = "known_newer_version"
     }
 }

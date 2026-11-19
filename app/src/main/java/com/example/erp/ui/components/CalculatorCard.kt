@@ -77,6 +77,7 @@ import com.example.erp.ui.theme.accentColor
 import com.example.erp.ui.theme.cardBorder
 import com.example.erp.ui.theme.cardBorderColor
 import com.example.erp.ui.theme.cardContainerColor
+import com.example.erp.ui.theme.floatingFrameColor
 import com.example.erp.ui.theme.positiveColor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
@@ -91,12 +92,21 @@ private val AmountTextStyle = TextStyle(
     fontFeatureSettings = "tnum"
 )
 
-private fun formatCalc(value: Double): String {
-    val bd = BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP)
+/**
+ * The rate the calculator prints, with the digits the reader asked for.
+ *
+ * [fracDigits] is what "Alta precisión" controls: two decimals by default,
+ * four when it is on. Formatting stays here rather than in a shared helper
+ * because this line is the only place that prints a bare rate next to its
+ * currency, without the "Bs" the quote card adds.
+ */
+internal fun formatCalc(value: Double, fracDigits: Int): String {
+    val bd = BigDecimal.valueOf(value).setScale(fracDigits, RoundingMode.HALF_UP)
     val plain = bd.toPlainString().replace('.', ',')
     val parts = plain.split(',')
     val withThousands = parts[0].reversed().chunked(3).joinToString(".").reversed()
-    return if (parts.size > 1) "$withThousands,${parts[1]}" else "$withThousands,00"
+    val decimals = parts.getOrNull(1) ?: "0".repeat(fracDigits)
+    return "$withThousands,$decimals"
 }
 
 /**
@@ -118,17 +128,24 @@ private data class AlternativeMarket(
  *   source of truth, and no second copy that can drift from what is on screen.
  * @param suggestionsEnabled shows the quick dollar amounts under the dollar
  *   field. Turning it off hides them without changing the calculator.
+ * @param highPrecision prints the rate with four decimals instead of two, the
+ *   same rule the quote card and both share texts follow.
  */
 @Composable
 fun CalculatorCard(
     quote: DolarQuote?,
     quotes: List<DolarQuote> = emptyList(),
     suggestionsEnabled: Boolean = true,
+    highPrecision: Boolean = false,
     onAmountsChanged: (bolivaresDigits: String, divisaDigits: String) -> Unit = { _, _ -> }
 ) {
     if (quote == null) return
     val rate = quote.promedio
     val shortName = quote.fuente.uppercase()
+    // The rate line is the calculator's own copy of the number the quote card
+    // shows, so it answers to the same switch: two decimals, or four when the
+    // reader turned "Alta precisión" on.
+    val rateDigits = if (highPrecision) 4 else 2
 
     /**
      * The same amount priced against the other reference, so the comparison
@@ -262,7 +279,7 @@ fun CalculatorCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     TickerNumber(
-                        value = formatCalc(rate),
+                        value = formatCalc(rate, rateDigits),
                         style = MaterialTheme.typography.labelMedium,
                         color = accentColor(),
                         modifier = Modifier.padding(horizontal = 5.dp)
@@ -724,7 +741,7 @@ private fun AmountSuggestions(
                     .border(
                         width = 1.dp,
                         color = if (selected) accentColor().copy(alpha = 0.55f)
-                        else cardBorderColor(),
+                        else floatingFrameColor(),
                         shape = shape
                     )
                     .clickable(
@@ -764,7 +781,10 @@ private fun AmountSuggestionsPopup(
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 8.dp,
         shadowElevation = 16.dp,
-        border = BorderStroke(1.dp, cardBorderColor())
+        // A floating panel over a card needs a frame of its own. On AMOLED the
+        // theme hairline is invisible against the pure black, so the frame is
+        // the only thing that tells the reader where the panel starts.
+        border = BorderStroke(1.dp, floatingFrameColor())
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Text(

@@ -143,6 +143,14 @@ class UpdateChecker(
     }
 
     /**
+     * The version of the newest published release, without spending API quota.
+     *
+     * This is the check the background worker uses: it only needs to know
+     * WHETHER there is something newer, not what it contains.
+     */
+    suspend fun latestPublishedVersion(): String = fetchLatestPublishedVersion()
+
+    /**
      * Reads the version of the newest published release without spending API
      * quota.
      *
@@ -254,6 +262,46 @@ internal fun parseSemver(value: String): Semver? {
         minor = numbers.getOrElse(1) { 0 },
         patch = numbers.getOrElse(2) { 0 }
     )
+}
+
+/**
+ * Why an update check is running.
+ *
+ * The three cases differ in exactly two things: whether the interval chosen
+ * in Settings applies, and whether a notice the reader sent away counts.
+ */
+enum class UpdateCheckTrigger {
+    /** The launch check: throttled by the interval, and the dismissal counts. */
+    Automatic,
+
+    /**
+     * The background worker already found a release: not throttled, because the
+     * work was done outside the app, but the dismissal still counts.
+     */
+    Background,
+
+    /** The reader pressed "Buscar actualización": never throttled, dismissal ignored. */
+    Manual
+}
+
+/**
+ * Whether the version the background worker found is still worth offering.
+ *
+ * The worker stores the newest published version it saw. It only matters if
+ * it is newer than the build that is running, and it stops mattering the
+ * moment the reader installs that release. A version the reader already sent
+ * away with "Más tarde" does not come back on its own either: asking GitHub
+ * for its details again would spend quota for a notice nobody wants.
+ */
+internal fun hasNewerVersionKnown(
+    knownVersion: String?,
+    installedVersion: String,
+    dismissedVersion: String? = null
+): Boolean {
+    val known = knownVersion?.trim().orEmpty()
+    if (known.isEmpty()) return false
+    if (dismissedVersion?.trim().orEmpty().equals(known, ignoreCase = true)) return false
+    return isNewerVersion(known, installedVersion)
 }
 
 /**

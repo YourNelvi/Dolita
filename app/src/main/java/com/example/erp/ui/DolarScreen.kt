@@ -115,8 +115,10 @@ import com.example.erp.data.RateSample
 import com.example.erp.data.ShareImage
 import com.example.erp.data.ThemeMode
 import com.example.erp.data.UpdateCheckResult
+import com.example.erp.data.UpdateCheckTrigger
 import com.example.erp.data.UpdateChecker
 import com.example.erp.data.UpdatePreferences
+import com.example.erp.data.hasNewerVersionKnown
 import com.example.erp.data.parseSha256Digest
 import com.example.erp.data.shouldShowUpdateDialog
 import com.example.erp.data.updateApkFileName
@@ -395,13 +397,13 @@ fun DolarScreen(
     // survives rotation; a File does not.
     var pendingInstallPath by rememberSaveable { mutableStateOf("") }
 
-    fun checkForUpdates(force: Boolean) {
+    fun checkForUpdates(trigger: UpdateCheckTrigger) {
         val checker = updateChecker ?: return
         if (checkingUpdate) return
 
         scope.launch {
             checkingUpdate = true
-            val result = checker.check(force)
+            val result = checker.check(force = trigger != UpdateCheckTrigger.Automatic)
             checkingUpdate = false
 
             when (result) {
@@ -414,7 +416,7 @@ fun DolarScreen(
                         releaseVersion = result.update.versionName,
                         currentVersion = BuildConfig.VERSION_NAME,
                         dismissedVersion = updatePreferences.dismissedVersion,
-                        manual = force
+                        manual = trigger == UpdateCheckTrigger.Manual
                     )
                     if (!offer) return@launch
 
@@ -426,7 +428,7 @@ fun DolarScreen(
                     availableUpdate = result.update
                 }
 
-                UpdateCheckResult.UpToDate -> if (force) {
+                UpdateCheckResult.UpToDate -> if (trigger == UpdateCheckTrigger.Manual) {
                     Toast.makeText(
                         context,
                         "Ya tenés la última versión (${BuildConfig.VERSION_NAME}).",
@@ -434,7 +436,7 @@ fun DolarScreen(
                     ).show()
                 }
 
-                is UpdateCheckResult.Failed -> if (force) {
+                is UpdateCheckResult.Failed -> if (trigger == UpdateCheckTrigger.Manual) {
                     Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
                 }
 
@@ -526,10 +528,26 @@ fun DolarScreen(
         startDownload(update)
     }
 
-    // One silent check per day, at launch. The checker persists its last
-    // successful timestamp, so rotations and quick restarts cost no request.
+    // The notice appears here, in the home, and nowhere else: the background
+    // worker only remembers that a release exists, and the app offers it when
+    // it opens. One silent check per launch, throttled by the interval chosen
+    // in Settings; rotations and quick restarts cost no request.
     LaunchedEffect(Unit) {
-        if (!inPreview) checkForUpdates(force = false)
+        if (inPreview) return@LaunchedEffect
+        // If the worker already found a release, the notice is shown now
+        // instead of waiting for the next scheduled check. A release the
+        // reader already sent away is left alone: no request is spent on it.
+        val known = updatePreferences.knownNewerVersion
+        if (hasNewerVersionKnown(
+                knownVersion = known,
+                installedVersion = BuildConfig.VERSION_NAME,
+                dismissedVersion = updatePreferences.dismissedVersion
+            )
+        ) {
+            checkForUpdates(UpdateCheckTrigger.Background)
+        } else {
+            checkForUpdates(UpdateCheckTrigger.Automatic)
+        }
     }
 
     // A previous install may have left the downloaded APK behind. It is only
@@ -609,7 +627,7 @@ fun DolarScreen(
                 onAmoledBlackChange = { viewModel.setAmoledBlackEnabled(it) },
                 isDynamicColorAvailable = Build.VERSION.SDK_INT >= 31,
                 onBack = { showSettings = false },
-                onCheckForUpdates = { checkForUpdates(force = true) },
+                onCheckForUpdates = { checkForUpdates(UpdateCheckTrigger.Manual) },
                 checkingUpdate = checkingUpdate,
                 paymentProfileCount = paymentProfiles.size,
                 onOpenPaymentProfiles = { openPaymentProfiles() },
@@ -1361,6 +1379,7 @@ private fun DolarContent(
                     quote = quote,
                     quotes = uiState.quotes,
                     suggestionsEnabled = calculatorSuggestionsEnabled,
+                    highPrecision = highPrecision,
                     onAmountsChanged = { bolivares, divisa ->
                         calculatorAmounts = CalculatorAmounts(bolivares, divisa)
                     }

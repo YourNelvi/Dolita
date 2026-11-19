@@ -16,7 +16,7 @@ Aplicación Android en Kotlin + Jetpack Compose para consultar las cotizaciones 
 - [x] Widget de la tasa con minigráfico.
 - [x] Tarjeta para compartir la cotización como imagen o texto.
 - [x] Cuatro paletas (Dólar Verde, Azul Bancario, Violeta Elegante, Alto Contraste), modo sistema/claro/oscuro, color dinámico en Android 12+ y negro puro opcional para AMOLED.
-- [x] Actualización desde la app contra GitHub Releases: descarga el APK y verifica el SHA-256 antes de instalar. Frecuencia diaria, semanal o manual.
+- [x] Actualización desde la app contra GitHub Releases: descarga el APK y verifica el SHA-256 antes de instalar. Frecuencia cada 2 horas, semanal o manual.
 - [x] Estados de carga y error con reintento, y actualización manual de cotizaciones.
 
 ## Instalación
@@ -28,6 +28,14 @@ Aplicación Android en Kotlin + Jetpack Compose para consultar las cotizaciones 
 Con la app abierta, **Ajustes → Actualizaciones** permite buscar una versión nueva en el momento.
 
 > No requiere cuenta ni registro.
+
+### El aviso de actualización
+
+La app consulta GitHub Releases cada dos horas por su cuenta y, si encuentra una versión
+nueva, te lo avisa **en la pantalla de inicio** cuando la abrís. No manda notificaciones:
+un aviso de actualización interrumpe a quien no pidió nada, y la app es el lugar donde
+la versión se puede explicar e instalar. Si preferís que no pregunte, en
+**Ajustes → Actualizaciones** está la opción de dejarlo solo manual.
 
 ### El aviso de Play Protect
 
